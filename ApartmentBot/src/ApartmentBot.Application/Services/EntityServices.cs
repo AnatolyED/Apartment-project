@@ -97,6 +97,18 @@ public sealed class ApartmentService : IApartmentService
         int limit = 20,
         CancellationToken cancellationToken = default)
     {
+        var normalizedAreaMin = filters?.AreaMin;
+        var normalizedAreaMax = filters?.AreaMax;
+
+        // Some panel-side filters behave as a strict upper bound.
+        // Widening an exact match by a tiny epsilon keeps "57.9 - 57.9" usable for users.
+        if (normalizedAreaMin.HasValue &&
+            normalizedAreaMax.HasValue &&
+            normalizedAreaMin.Value == normalizedAreaMax.Value)
+        {
+            normalizedAreaMax += 0.05m;
+        }
+
         var result = await _apartmentRepository.GetPagedListAsync(
             districtId: districtId,
             cityId: cityId,
@@ -104,8 +116,8 @@ public sealed class ApartmentService : IApartmentService
             rooms: filters?.Rooms,
             priceMin: filters?.PriceMin,
             priceMax: filters?.PriceMax,
-            areaMin: filters?.AreaMin,
-            areaMax: filters?.AreaMax,
+            areaMin: normalizedAreaMin,
+            areaMax: normalizedAreaMax,
             page: page,
             limit: limit,
             sort: filters?.Sort ?? "created_desc",

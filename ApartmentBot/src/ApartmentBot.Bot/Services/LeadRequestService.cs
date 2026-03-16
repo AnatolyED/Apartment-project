@@ -1,4 +1,6 @@
+using System.Text.RegularExpressions;
 using ApartmentBot.Application.Services;
+using ApartmentBot.Bot.CallbackData;
 using ApartmentBot.Bot.Keyboards;
 using ApartmentBot.Domain.Interfaces;
 using ApartmentBot.Infrastructure.Configuration;
@@ -51,6 +53,8 @@ public interface ILeadRequestService
 
 public sealed class LeadRequestService : ILeadRequestService
 {
+    private static readonly Regex NonDigitRegex = new("[^0-9]", RegexOptions.Compiled);
+
     private readonly IUserStateService _userStateService;
     private readonly ITelegramMessageService _telegramMessageService;
     private readonly IOptions<TelegramSettings> _telegramSettings;
@@ -78,8 +82,8 @@ public sealed class LeadRequestService : ILeadRequestService
         await _telegramMessageService.SendMessageAsync(
             botClient,
             userId,
-            $"📞 **Связь с менеджером**\n\n" +
-            $"Вас заинтересовал объект:\n" +
+            "📞 **Связь с менеджером**\n\n" +
+            "Вас заинтересовал объект:\n" +
             $"```\n{apartmentInfo}\n```\n\n" +
             "Пожалуйста, поделитесь своим контактом, чтобы менеджер мог связаться с вами.\n\n" +
             "Нажмите кнопку ниже 👇",
@@ -104,8 +108,8 @@ public sealed class LeadRequestService : ILeadRequestService
         await _telegramMessageService.SendMessageAsync(
             botClient,
             userId,
-            $"📝 **Заявка на консультацию**\n\n" +
-            $"Вас заинтересовал объект:\n" +
+            "📝 **Заявка на консультацию**\n\n" +
+            "Вас заинтересовал объект:\n" +
             $"```\n{apartmentInfo}\n```\n\n" +
             "Пожалуйста, введите ваше **имя**:",
             ParseMode.Markdown,
@@ -138,7 +142,19 @@ public sealed class LeadRequestService : ILeadRequestService
             return;
         }
 
-        var phone = message.Contact.PhoneNumber;
+        if (!TryNormalizePhone(message.Contact.PhoneNumber, out var normalizedPhone))
+        {
+            await _telegramMessageService.SendMessageAsync(
+                botClient,
+                userId,
+                "❌ Не удалось распознать номер телефона из контакта.\n\n" +
+                "Пожалуйста, отправьте контакт ещё раз через кнопку ниже.",
+                ParseMode.None,
+                CreateContactKeyboard("📱 Поделиться контактом"),
+                cancellationToken);
+            return;
+        }
+
         var firstName = message.Contact.FirstName;
         var apartmentName = state.RequestedApartmentName ?? "Неизвестно";
 
@@ -146,28 +162,26 @@ public sealed class LeadRequestService : ILeadRequestService
             "Заявка на связь: User={UserId}, Name={Name}, Phone={Phone}, Apartment={ApartmentName}",
             userId,
             firstName,
-            phone,
+            normalizedPhone,
             apartmentName);
 
         await NotifyManagerAsync(
             botClient,
             title: "📞 **Новая заявка: связь с менеджером**",
             clientName: firstName,
-            phone: phone,
+            phone: normalizedPhone,
             apartmentName: apartmentName,
             clientId: userId,
             cancellationToken: cancellationToken);
 
-        await _telegramMessageService.SendMessageAsync(
+        await SendCompletionMessagesAsync(
             botClient,
             userId,
-            $"✅ **Спасибо!**\n\n" +
+            "✅ **Спасибо!**\n\n" +
             "Менеджер свяжется с вами в ближайшее время.\n\n" +
-            $"📱 Телефон: `{phone}`\n" +
+            $"📱 Телефон: `{normalizedPhone}`\n" +
             $"👤 Имя: {firstName}\n" +
             $"🏠 Объект: {apartmentName}",
-            ParseMode.Markdown,
-            new ReplyKeyboardRemove(),
             cancellationToken);
 
         state.CurrentStep = BotStep.ViewApartments;
@@ -193,7 +207,7 @@ public sealed class LeadRequestService : ILeadRequestService
             userId,
             "📝 **Заявка на консультацию**\n\n" +
             $"Спасибо, {text}! Теперь введите ваш **номер телефона**.\n\n" +
-            "Или нажмите кнопку ниже 👇",
+            "Можно ввести номер вручную в формате `+79991234567` или нажать кнопку ниже 👇",
             ParseMode.Markdown,
             CreateContactKeyboard("📱 Поделиться телефоном"),
             cancellationToken);
@@ -206,6 +220,19 @@ public sealed class LeadRequestService : ILeadRequestService
         UserState state,
         CancellationToken cancellationToken)
     {
+        if (!TryNormalizePhone(text, out var normalizedPhone))
+        {
+            await _telegramMessageService.SendMessageAsync(
+                botClient,
+                userId,
+                "❌ Некорректный номер телефона.\n\n" +
+                "Введите номер в формате `+79991234567`, `89991234567` или отправьте контакт кнопкой ниже.",
+                ParseMode.Markdown,
+                CreateContactKeyboard("📱 Поделиться телефоном"),
+                cancellationToken);
+            return;
+        }
+
         var apartmentName = state.RequestedApartmentName ?? "Неизвестно";
         var clientName = state.ConsultationClientName ?? "Не указано";
 
@@ -213,34 +240,56 @@ public sealed class LeadRequestService : ILeadRequestService
             "Заявка на консультацию: User={UserId}, Name={Name}, Phone={Phone}, Apartment={ApartmentName}",
             userId,
             clientName,
-            text,
+            normalizedPhone,
             apartmentName);
 
         await NotifyManagerAsync(
             botClient,
             title: "📝 **Новая заявка: консультация**",
             clientName: clientName,
-            phone: text,
+            phone: normalizedPhone,
             apartmentName: apartmentName,
             clientId: userId,
             cancellationToken: cancellationToken);
 
-        await _telegramMessageService.SendMessageAsync(
+        await SendCompletionMessagesAsync(
             botClient,
             userId,
             "✅ Заявка принята.\n\n" +
             "Менеджер свяжется с вами в ближайшее время.\n\n" +
-            $"📱 Телефон: {text}\n" +
+            $"📱 Телефон: {normalizedPhone}\n" +
             $"👤 Имя: {clientName}\n" +
             $"🏠 Объект: {apartmentName}",
-            ParseMode.Markdown,
-            cancellationToken: cancellationToken);
+            cancellationToken);
 
         state.CurrentStep = BotStep.ViewApartments;
         state.PendingInput = null;
         state.RequestedApartmentName = null;
         state.ConsultationClientName = null;
         await _userStateService.SetStateAsync(userId, state, cancellationToken);
+    }
+
+    private async Task SendCompletionMessagesAsync(
+        ITelegramBotClient botClient,
+        long userId,
+        string successMessage,
+        CancellationToken cancellationToken)
+    {
+        await _telegramMessageService.SendMessageAsync(
+            botClient,
+            userId,
+            successMessage,
+            ParseMode.Markdown,
+            new ReplyKeyboardRemove(),
+            cancellationToken);
+
+        await _telegramMessageService.SendMessageAsync(
+            botClient,
+            userId,
+            "Что хотите сделать дальше?",
+            ParseMode.None,
+            CreateAfterLeadKeyboard(),
+            cancellationToken);
     }
 
     private async Task NotifyManagerAsync(
@@ -280,6 +329,35 @@ public sealed class LeadRequestService : ILeadRequestService
         }
     }
 
+    private static bool TryNormalizePhone(string? rawPhone, out string normalizedPhone)
+    {
+        normalizedPhone = string.Empty;
+
+        if (string.IsNullOrWhiteSpace(rawPhone))
+        {
+            return false;
+        }
+
+        var digits = NonDigitRegex.Replace(rawPhone, string.Empty);
+
+        if (digits.Length == 10)
+        {
+            digits = $"7{digits}";
+        }
+        else if (digits.Length == 11 && digits.StartsWith("8", StringComparison.Ordinal))
+        {
+            digits = $"7{digits[1..]}";
+        }
+
+        if (digits.Length < 11 || digits.Length > 15)
+        {
+            return false;
+        }
+
+        normalizedPhone = $"+{digits}";
+        return true;
+    }
+
     private static ReplyKeyboardMarkup CreateContactKeyboard(string buttonText)
     {
         return new ReplyKeyboardMarkup(new[]
@@ -290,5 +368,13 @@ public sealed class LeadRequestService : ILeadRequestService
             ResizeKeyboard = true,
             OneTimeKeyboard = true
         };
+    }
+
+    private static InlineKeyboardMarkup CreateAfterLeadKeyboard()
+    {
+        return new InlineKeyboardMarkup(
+        [
+            [InlineKeyboardButton.WithCallbackData("🏠 В начало", new NavigationCallbackData { Action = "back_to_start" }.ToCallbackData())]
+        ]);
     }
 }

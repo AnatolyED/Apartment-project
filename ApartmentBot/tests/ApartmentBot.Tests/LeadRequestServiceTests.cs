@@ -96,7 +96,7 @@ public sealed class LeadRequestServiceTests
     }
 
     [Fact]
-    public async Task HandleConsultationPhoneInputAsync_NotifiesManagerAndResetsState()
+    public async Task HandleConsultationPhoneInputAsync_NotifiesManager_RemovesReplyKeyboard_AndShowsStartButton()
     {
         var userStateService = new Mock<IUserStateService>();
         var telegramMessageService = new Mock<ITelegramMessageService>();
@@ -141,13 +141,76 @@ public sealed class LeadRequestServiceTests
                 It.Is<ChatId>(chatId => chatId.Identifier == 777),
                 It.IsAny<string>(),
                 ParseMode.Markdown,
-                null,
+                It.Is<ReplyMarkup>(markup => markup is ReplyKeyboardRemove),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
+
+        telegramMessageService.Verify(
+            x => x.SendMessageAsync(
+                It.IsAny<ITelegramBotClient>(),
+                It.Is<ChatId>(chatId => chatId.Identifier == 777),
+                It.Is<string>(text => text.Contains("Что хотите сделать дальше?")),
+                ParseMode.None,
+                It.Is<ReplyMarkup>(markup => markup is InlineKeyboardMarkup),
                 It.IsAny<CancellationToken>()),
             Times.Once);
 
         userStateService.Verify(
             x => x.SetStateAsync(777, state, It.IsAny<CancellationToken>()),
             Times.Once);
+    }
+
+    [Fact]
+    public async Task HandleConsultationPhoneInputAsync_WithInvalidPhone_RePromptsUserAndKeepsStep()
+    {
+        var userStateService = new Mock<IUserStateService>();
+        var telegramMessageService = new Mock<ITelegramMessageService>();
+        var state = new UserState
+        {
+            CurrentStep = BotStep.ConsultationPhone,
+            RequestedApartmentName = "Квартира №9",
+            ConsultationClientName = "Марина"
+        };
+
+        var service = CreateService(
+            userStateService.Object,
+            telegramMessageService.Object,
+            managerChatId: 99887766);
+
+        await service.HandleConsultationPhoneInputAsync(
+            Mock.Of<ITelegramBotClient>(),
+            777,
+            "12345",
+            state,
+            CancellationToken.None);
+
+        Assert.Equal(BotStep.ConsultationPhone, state.CurrentStep);
+        Assert.Equal("Квартира №9", state.RequestedApartmentName);
+        Assert.Equal("Марина", state.ConsultationClientName);
+
+        telegramMessageService.Verify(
+            x => x.SendMessageAsync(
+                It.IsAny<ITelegramBotClient>(),
+                It.Is<ChatId>(chatId => chatId.Identifier == 777),
+                It.Is<string>(text => text.Contains("Некорректный номер телефона")),
+                ParseMode.Markdown,
+                It.Is<ReplyMarkup>(markup => markup is ReplyKeyboardMarkup),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
+
+        telegramMessageService.Verify(
+            x => x.SendMessageAsync(
+                It.IsAny<ITelegramBotClient>(),
+                It.Is<ChatId>(chatId => chatId.Identifier == 99887766),
+                It.IsAny<string>(),
+                ParseMode.Markdown,
+                null,
+                It.IsAny<CancellationToken>()),
+            Times.Never);
+
+        userStateService.Verify(
+            x => x.SetStateAsync(It.IsAny<long>(), It.IsAny<UserState>(), It.IsAny<CancellationToken>()),
+            Times.Never);
     }
 
     [Fact]
@@ -189,7 +252,7 @@ public sealed class LeadRequestServiceTests
     }
 
     [Fact]
-    public async Task HandleContactResponseAsync_WithContact_NotifiesManagerAndResetsState()
+    public async Task HandleContactResponseAsync_WithContact_RemovesReplyKeyboard_AndShowsStartButton()
     {
         var userStateService = new Mock<IUserStateService>();
         var telegramMessageService = new Mock<ITelegramMessageService>();
@@ -244,9 +307,76 @@ public sealed class LeadRequestServiceTests
                 It.IsAny<CancellationToken>()),
             Times.Once);
 
+        telegramMessageService.Verify(
+            x => x.SendMessageAsync(
+                It.IsAny<ITelegramBotClient>(),
+                It.Is<ChatId>(chatId => chatId.Identifier == 777),
+                It.Is<string>(text => text.Contains("Что хотите сделать дальше?")),
+                ParseMode.None,
+                It.Is<ReplyMarkup>(markup => markup is InlineKeyboardMarkup),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
+
         userStateService.Verify(
             x => x.SetStateAsync(777, state, It.IsAny<CancellationToken>()),
             Times.Once);
+    }
+
+    [Fact]
+    public async Task HandleContactResponseAsync_WithInvalidPhoneInContact_RePromptsUser()
+    {
+        var userStateService = new Mock<IUserStateService>();
+        var telegramMessageService = new Mock<ITelegramMessageService>();
+        var state = new UserState
+        {
+            CurrentStep = BotStep.ContactManager,
+            RequestedApartmentName = "Квартира №15"
+        };
+
+        var service = CreateService(
+            userStateService.Object,
+            telegramMessageService.Object,
+            managerChatId: 44556677);
+
+        await service.HandleContactResponseAsync(
+            Mock.Of<ITelegramBotClient>(),
+            777,
+            new Message
+            {
+                Contact = new Contact
+                {
+                    FirstName = "Иван",
+                    PhoneNumber = "12"
+                }
+            },
+            state,
+            CancellationToken.None);
+
+        Assert.Equal(BotStep.ContactManager, state.CurrentStep);
+
+        telegramMessageService.Verify(
+            x => x.SendMessageAsync(
+                It.IsAny<ITelegramBotClient>(),
+                It.Is<ChatId>(chatId => chatId.Identifier == 777),
+                It.Is<string>(text => text.Contains("Не удалось распознать номер телефона")),
+                ParseMode.None,
+                It.Is<ReplyMarkup>(markup => markup is ReplyKeyboardMarkup),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
+
+        telegramMessageService.Verify(
+            x => x.SendMessageAsync(
+                It.IsAny<ITelegramBotClient>(),
+                It.Is<ChatId>(chatId => chatId.Identifier == 44556677),
+                It.IsAny<string>(),
+                ParseMode.Markdown,
+                null,
+                It.IsAny<CancellationToken>()),
+            Times.Never);
+
+        userStateService.Verify(
+            x => x.SetStateAsync(It.IsAny<long>(), It.IsAny<UserState>(), It.IsAny<CancellationToken>()),
+            Times.Never);
     }
 
     private static LeadRequestService CreateService(

@@ -9,6 +9,7 @@ using Moq;
 using Telegram.Bot;
 using Telegram.Bot.Requests.Abstractions;
 using Telegram.Bot.Types;
+using Telegram.Bot.Types.ReplyMarkups;
 
 namespace ApartmentBot.Tests;
 
@@ -31,7 +32,7 @@ public sealed class ApartmentPresentationServiceTests
         Assert.Contains("25000000", NormalizeNumberFormatting(message));
         Assert.Contains("₽", message);
         Assert.Contains("Площадь:", message);
-        Assert.Contains("89", NormalizeNumberFormatting(message));
+        Assert.Contains("89 м²", message);
     }
 
     [Fact]
@@ -68,7 +69,7 @@ public sealed class ApartmentPresentationServiceTests
     }
 
     [Fact]
-    public async Task ShowApartmentListAsync_WhenNoApartments_SendsFallbackMessage()
+    public async Task ShowApartmentListAsync_WhenNoApartments_SendsFallbackMessageWithoutPaginationRow()
     {
         var apartmentService = new Mock<IApartmentService>();
         var districtService = new Mock<IDistrictService>();
@@ -121,6 +122,7 @@ public sealed class ApartmentPresentationServiceTests
         Assert.NotNull(capturedRequest);
         Assert.Equal("SendMessageRequest", capturedRequest!.GetType().Name);
         Assert.Contains("Квартиры не найдены", GetStringProperty(capturedRequest, "Text"));
+        Assert.DoesNotContain("Стр.", GetReplyMarkupButtonTexts(capturedRequest));
     }
 
     [Fact]
@@ -183,6 +185,7 @@ public sealed class ApartmentPresentationServiceTests
         Assert.NotNull(capturedRequest);
         Assert.Equal("EditMessageTextRequest", capturedRequest!.GetType().Name);
         Assert.Contains("Доступно квартир: 1", GetStringProperty(capturedRequest, "Text"));
+        Assert.Contains("65 м²", GetReplyMarkupButtonTexts(capturedRequest));
     }
 
     [Fact]
@@ -477,5 +480,20 @@ public sealed class ApartmentPresentationServiceTests
             .Replace(" ", string.Empty)
             .Replace("\u00A0", string.Empty)
             .Replace("\u202F", string.Empty);
+    }
+
+    private static string GetReplyMarkupButtonTexts(object request)
+    {
+        var replyMarkup = request.GetType().GetProperty("ReplyMarkup")?.GetValue(request) as InlineKeyboardMarkup;
+        if (replyMarkup is null)
+        {
+            return string.Empty;
+        }
+
+        return string.Join(
+            "\n",
+            replyMarkup.InlineKeyboard
+                .SelectMany(row => row)
+                .Select(button => button.Text));
     }
 }

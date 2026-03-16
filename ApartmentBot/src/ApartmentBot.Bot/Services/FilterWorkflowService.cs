@@ -1,3 +1,5 @@
+using System.Globalization;
+using System.Text.RegularExpressions;
 using ApartmentBot.Application.Services;
 using ApartmentBot.Bot.CallbackData;
 using ApartmentBot.Bot.Keyboards;
@@ -52,6 +54,9 @@ public interface IFilterWorkflowService
 
 public sealed class FilterWorkflowService : IFilterWorkflowService
 {
+    private static readonly Regex IntegerRegex = new(@"^\d+$", RegexOptions.Compiled);
+    private static readonly Regex DecimalRegex = new(@"^\d+(?:[.,]\d{1,2})?$", RegexOptions.Compiled);
+
     private readonly IUserStateService _userStateService;
     private readonly ITelegramRetryService _telegramRetryService;
     private readonly ILogger<FilterWorkflowService> _logger;
@@ -184,7 +189,7 @@ public sealed class FilterWorkflowService : IFilterWorkflowService
             return;
         }
 
-        if (decimal.TryParse(text, out var price) && price >= 0 && price <= 1_000_000_000)
+        if (TryParsePrice(text, out var price) && price <= 1_000_000_000)
         {
             state.CurrentFilters.PriceMin = price;
             state.CurrentStep = BotStep.FilterPriceMax;
@@ -203,7 +208,7 @@ public sealed class FilterWorkflowService : IFilterWorkflowService
         await SendMessageAsync(
             botClient,
             userId,
-            "Некорректное значение. Введите число от 0 до 1 000 000 000:",
+            "Некорректное значение. Введите целое число от 0 до 1 000 000 000:",
             KeyboardFactory.CreateCancelKeyboard(),
             cancellationToken);
     }
@@ -218,7 +223,7 @@ public sealed class FilterWorkflowService : IFilterWorkflowService
         state.PendingInput = null;
         state.CurrentStep = BotStep.ViewApartments;
 
-        if (text != "/skip" && decimal.TryParse(text, out var price) && price >= 0 && price <= 1_000_000_000)
+        if (text != "/skip" && TryParsePrice(text, out var price) && price <= 1_000_000_000)
         {
             state.CurrentFilters.PriceMax = price;
         }
@@ -249,7 +254,7 @@ public sealed class FilterWorkflowService : IFilterWorkflowService
             return;
         }
 
-        if (decimal.TryParse(text, out var area) && area >= 0 && area <= 1000)
+        if (TryParseArea(text, out var area) && area <= 1000)
         {
             state.CurrentFilters.AreaMin = area;
             state.CurrentStep = BotStep.FilterAreaMax;
@@ -268,7 +273,7 @@ public sealed class FilterWorkflowService : IFilterWorkflowService
         await SendMessageAsync(
             botClient,
             userId,
-            "Некорректное значение. Введите число от 0 до 1000:",
+            "Некорректное значение. Введите число от 0 до 1000. Дробную часть можно указать через точку или запятую:",
             KeyboardFactory.CreateCancelKeyboard(),
             cancellationToken);
     }
@@ -283,7 +288,7 @@ public sealed class FilterWorkflowService : IFilterWorkflowService
         state.PendingInput = null;
         state.CurrentStep = BotStep.ViewApartments;
 
-        if (text != "/skip" && decimal.TryParse(text, out var area) && area >= 0 && area <= 1000)
+        if (text != "/skip" && TryParseArea(text, out var area) && area <= 1000)
         {
             state.CurrentFilters.AreaMax = area;
         }
@@ -426,5 +431,37 @@ public sealed class FilterWorkflowService : IFilterWorkflowService
                 replyMarkup: replyMarkup,
                 cancellationToken: ct),
             cancellationToken);
+    }
+
+    private static bool TryParsePrice(string text, out decimal price)
+    {
+        price = 0;
+        var normalized = NormalizeNumericInput(text);
+        return IntegerRegex.IsMatch(normalized) &&
+               decimal.TryParse(normalized, NumberStyles.Number, CultureInfo.InvariantCulture, out price) &&
+               price >= 0;
+    }
+
+    private static bool TryParseArea(string text, out decimal area)
+    {
+        area = 0;
+        var normalized = NormalizeNumericInput(text);
+        if (!DecimalRegex.IsMatch(normalized))
+        {
+            return false;
+        }
+
+        normalized = normalized.Replace(',', '.');
+        return decimal.TryParse(normalized, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out area) &&
+               area >= 0;
+    }
+
+    private static string NormalizeNumericInput(string text)
+    {
+        return text
+            .Trim()
+            .Replace(" ", string.Empty)
+            .Replace("\u00A0", string.Empty)
+            .Replace("\u202F", string.Empty);
     }
 }

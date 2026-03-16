@@ -124,6 +124,60 @@ public sealed class FilterWorkflowServiceTests
         Assert.Equal("created_desc", filters.Sort);
     }
 
+    [Fact]
+    public async Task HandleAreaMinInputAsync_WithComma_ParsesDecimalValue()
+    {
+        var userStateService = new Mock<IUserStateService>();
+        var service = CreateService(userStateService.Object);
+        var state = new UserState
+        {
+            CurrentStep = BotStep.FilterAreaMin,
+            CurrentFilters = new ApartmentFilters()
+        };
+
+        await service.HandleAreaMinInputAsync(
+            Mock.Of<ITelegramBotClient>(),
+            777,
+            "57,9",
+            state,
+            CancellationToken.None);
+
+        Assert.Equal(57.9m, state.CurrentFilters.AreaMin);
+        Assert.Equal(BotStep.FilterAreaMax, state.CurrentStep);
+        userStateService.Verify(
+            x => x.SetStateAsync(777, state, It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task HandleAreaMinInputAsync_WithInvalidCommaSeparatedValue_RePromptsUser()
+    {
+        IRequest<Message>? capturedRequest = null;
+        var userStateService = new Mock<IUserStateService>();
+        var botClient = CreateBotClientMock(request => capturedRequest = request);
+        var service = CreateService(userStateService.Object);
+        var state = new UserState
+        {
+            CurrentStep = BotStep.FilterAreaMin,
+            CurrentFilters = new ApartmentFilters()
+        };
+
+        await service.HandleAreaMinInputAsync(
+            botClient.Object,
+            777,
+            "57,9,1",
+            state,
+            CancellationToken.None);
+
+        Assert.Null(state.CurrentFilters.AreaMin);
+        Assert.Equal(BotStep.FilterAreaMin, state.CurrentStep);
+        Assert.NotNull(capturedRequest);
+        Assert.Contains("Некорректное значение", GetStringProperty(capturedRequest!, "Text"));
+        userStateService.Verify(
+            x => x.SetStateAsync(It.IsAny<long>(), It.IsAny<UserState>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
     private static FilterWorkflowService CreateService(IUserStateService userStateService)
     {
         return new FilterWorkflowService(

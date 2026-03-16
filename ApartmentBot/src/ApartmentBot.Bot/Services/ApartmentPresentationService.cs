@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using ApartmentBot.Application.DTOs;
 using ApartmentBot.Application.Services;
 using ApartmentBot.Bot.CallbackData;
@@ -6,7 +7,6 @@ using ApartmentBot.Domain.Interfaces;
 using ApartmentBot.Infrastructure.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using System.Diagnostics;
 using Telegram.Bot;
 using Telegram.Bot.Types;
 using Telegram.Bot.Types.ReplyMarkups;
@@ -120,7 +120,7 @@ public sealed class ApartmentPresentationService : IApartmentPresentationService
         var keyboard = new List<List<InlineKeyboardButton>>();
         foreach (var apartment in apartments.Apartments)
         {
-            var buttonText = $"{apartment.Name} | {apartment.Area:F0} м²";
+            var buttonText = $"{apartment.Name} | {ApartmentMessageFormatter.FormatArea(apartment.Area)}";
             keyboard.Add(
             [
                 InlineKeyboardButton.WithCallbackData(
@@ -178,7 +178,6 @@ public sealed class ApartmentPresentationService : IApartmentPresentationService
                         }
                         catch
                         {
-                            // Не мешаем основному сценарию, если Telegram не дал удалить сообщение.
                         }
                     }
 

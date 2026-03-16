@@ -1,3 +1,4 @@
+using System.Globalization;
 using ApartmentBot.Application.DTOs;
 using ApartmentBot.Bot.CallbackData;
 using ApartmentBot.Domain.Entities;
@@ -43,20 +44,23 @@ public static class KeyboardFactory
     {
         var keyboard = new List<List<InlineKeyboardButton>>();
 
-        var navRow = new List<InlineKeyboardButton>();
-        if (currentPage > 1)
+        if (totalPages > 0)
         {
-            navRow.Add(InlineKeyboardButton.WithCallbackData("⬅️", new PageCallbackData { PageNumber = currentPage - 1 }.ToCallbackData()));
+            var navRow = new List<InlineKeyboardButton>();
+            if (currentPage > 1)
+            {
+                navRow.Add(InlineKeyboardButton.WithCallbackData("⬅️", new PageCallbackData { PageNumber = currentPage - 1 }.ToCallbackData()));
+            }
+
+            navRow.Add(InlineKeyboardButton.WithCallbackData($"Стр. {currentPage}/{totalPages}", "ignore"));
+
+            if (currentPage < totalPages)
+            {
+                navRow.Add(InlineKeyboardButton.WithCallbackData("➡️", new PageCallbackData { PageNumber = currentPage + 1 }.ToCallbackData()));
+            }
+
+            keyboard.Add(navRow);
         }
-
-        navRow.Add(InlineKeyboardButton.WithCallbackData($"Стр. {currentPage}/{totalPages}", "ignore"));
-
-        if (currentPage < totalPages)
-        {
-            navRow.Add(InlineKeyboardButton.WithCallbackData("➡️", new PageCallbackData { PageNumber = currentPage + 1 }.ToCallbackData()));
-        }
-
-        keyboard.Add(navRow);
 
         var actionRow = new List<InlineKeyboardButton>
         {
@@ -127,7 +131,7 @@ public static class KeyboardFactory
                     $"Цена: {currentFilters.PriceMin?.ToString("N0") ?? "0"} - {currentFilters.PriceMax?.ToString("N0") ?? "∞"}",
                     new FilterCallbackData { FilterType = "price" }.ToCallbackData()),
                 InlineKeyboardButton.WithCallbackData(
-                    $"Площадь: {currentFilters.AreaMin?.ToString("F1") ?? "0"} - {currentFilters.AreaMax?.ToString("F1") ?? "∞"}",
+                    $"Площадь: {FormatAreaValue(currentFilters.AreaMin) ?? "0"} - {FormatAreaValue(currentFilters.AreaMax) ?? "∞"}",
                     new FilterCallbackData { FilterType = "area" }.ToCallbackData())
             },
             new()
@@ -212,4 +216,9 @@ public static class KeyboardFactory
         FinishingType.БезОтделки => "Без отделки",
         _ => "Любая"
     };
+
+    private static string? FormatAreaValue(decimal? area)
+    {
+        return area?.ToString("0.#", CultureInfo.InvariantCulture);
+    }
 }
