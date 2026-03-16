@@ -63,7 +63,6 @@ export function LoginForm() {
                 id="login"
                 name="login"
                 type="text"
-                placeholder="admin"
                 className="h-11 border-gray-200 pl-10 transition-colors focus:border-blue-500 focus:ring-blue-500"
                 autoComplete="username"
                 required
@@ -82,7 +81,6 @@ export function LoginForm() {
                 id="password"
                 name="password"
                 type="password"
-                placeholder="••••••••"
                 className="h-11 border-gray-200 pl-10 transition-colors focus:border-blue-500 focus:ring-blue-500"
                 autoComplete="current-password"
                 required

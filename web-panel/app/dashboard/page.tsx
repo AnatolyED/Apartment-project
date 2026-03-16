@@ -1,13 +1,7 @@
 import { Suspense } from 'react';
 import Link from 'next/link';
 import { count, eq } from 'drizzle-orm';
-import {
-  ArrowRight,
-  Building2,
-  Home,
-  Landmark,
-  MapPin,
-} from 'lucide-react';
+import { ArrowRight, Building2, Home, Landmark, MapPin } from 'lucide-react';
 import { db } from '@/lib/db';
 import { apartments, cities, districts } from '@/lib/db/schema';
 import { Button } from '@/components/ui/button';
@@ -57,46 +51,38 @@ async function StatsCards() {
           const Icon = stat.icon;
 
           return (
-            <Card
-              key={stat.title}
-              className="group relative overflow-hidden border-0 shadow-lg transition-all duration-300 hover:-translate-y-1 hover:shadow-xl"
-            >
-              <div
-                className={`absolute inset-0 bg-gradient-to-br ${stat.gradient} opacity-0 transition-opacity duration-300 group-hover:opacity-5`}
-              />
-
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium text-gray-600">
-                  {stat.title}
-                </CardTitle>
+            <Link key={stat.title} href={stat.href} className="block">
+              <Card className="group relative overflow-hidden border-0 shadow-lg transition-all duration-300 hover:-translate-y-1 hover:shadow-xl">
                 <div
-                  className={`flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br ${stat.gradient} shadow-md transition-transform duration-300 group-hover:scale-110`}
-                >
-                  <Icon className="h-6 w-6 text-white" />
-                </div>
-              </CardHeader>
+                  className={`absolute inset-0 bg-gradient-to-br ${stat.gradient} opacity-0 transition-opacity duration-300 group-hover:opacity-5`}
+                />
 
-              <CardContent>
-                <div className="space-y-2">
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium text-gray-600">{stat.title}</CardTitle>
                   <div
-                    className={`bg-gradient-to-r ${stat.gradient} bg-clip-text text-4xl font-bold text-transparent`}
+                    className={`flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br ${stat.gradient} shadow-md transition-transform duration-300 group-hover:scale-110`}
                   >
-                    {stat.value.toLocaleString('ru-RU')}
+                    <Icon className="h-6 w-6 text-white" />
                   </div>
-                  <p className="text-xs text-gray-500">{stat.description}</p>
-                </div>
+                </CardHeader>
 
-                <Link href={stat.href}>
-                  <Button
-                    variant="ghost"
-                    className={`mt-4 w-full justify-between ${stat.color}`}
-                  >
+                <CardContent>
+                  <div className="space-y-2">
+                    <div
+                      className={`bg-gradient-to-r ${stat.gradient} bg-clip-text text-4xl font-bold text-transparent`}
+                    >
+                      {stat.value.toLocaleString('ru-RU')}
+                    </div>
+                    <p className="text-xs text-gray-500">{stat.description}</p>
+                  </div>
+
+                  <div className={`mt-4 flex items-center justify-between ${stat.color}`}>
                     <span className="text-sm font-medium">Подробнее</span>
                     <ArrowRight className="h-4 w-4" />
-                  </Button>
-                </Link>
-              </CardContent>
-            </Card>
+                  </div>
+                </CardContent>
+              </Card>
+            </Link>
           );
         })}
       </div>
@@ -105,7 +91,7 @@ async function StatsCards() {
     console.error('StatsCards error:', error);
     return (
       <div className="py-12 text-center text-gray-500">
-        <p>Не удалось загрузить статистику</p>
+        <p>Не удалось загрузить статистику.</p>
       </div>
     );
   }
@@ -162,9 +148,7 @@ function QuickActions() {
     <Card className="border-0 shadow-lg">
       <CardHeader>
         <CardTitle className="text-gray-800">Быстрые действия</CardTitle>
-        <p className="text-sm text-gray-500">
-          Создайте новый объект недвижимости
-        </p>
+        <p className="text-sm text-gray-500">Создайте новый объект недвижимости</p>
       </CardHeader>
       <CardContent>
         <div className="grid gap-4 md:grid-cols-3">
@@ -172,10 +156,12 @@ function QuickActions() {
             const Icon = action.icon;
 
             return (
-              <Link key={action.title} href={action.href}>
-                <Button
-                  className={`h-auto w-full bg-gradient-to-r px-4 py-4 text-white shadow-md transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg ${action.color}`}
-                >
+              <Button
+                key={action.title}
+                asChild
+                className={`h-auto w-full bg-gradient-to-r px-4 py-4 text-white shadow-md transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg ${action.color}`}
+              >
+                <Link href={action.href}>
                   <div className="flex items-center gap-3">
                     <Icon className="h-5 w-5" />
                     <div className="text-left">
@@ -183,8 +169,8 @@ function QuickActions() {
                       <p className="text-xs opacity-80">{action.description}</p>
                     </div>
                   </div>
-                </Button>
-              </Link>
+                </Link>
+              </Button>
             );
           })}
         </div>
@@ -206,12 +192,10 @@ export default function DashboardPage() {
         <CardContent className="py-8">
           <div className="flex items-center justify-between">
             <div className="space-y-2">
-              <h2 className="text-2xl font-bold">
-                Панель управления недвижимостью
-              </h2>
+              <h2 className="text-2xl font-bold">Панель управления недвижимостью</h2>
               <p className="max-w-2xl text-slate-300">
-                Система учёта и управления объектами недвижимости. Используйте меню
-                слева для навигации по разделам.
+                Система учёта и управления объектами недвижимости. Используйте меню слева для
+                навигации по разделам.
               </p>
             </div>
             <Building2 className="h-16 w-16 opacity-20" />

@@ -4,6 +4,15 @@ import { finishingEnum } from '@/lib/db/schema';
 export const FINISHING_TYPES = finishingEnum.enumValues;
 export const USER_ROLES = ['admin', 'moderator'] as const;
 
+function normalizeIntegerMoney(value: unknown) {
+  if (typeof value === 'string') {
+    const digitsOnly = value.replace(/[^\d]/g, '');
+    return digitsOnly === '' ? undefined : Number.parseInt(digitsOnly, 10);
+  }
+
+  return value;
+}
+
 export const citySchema = z.object({
   name: z
     .string()
@@ -65,10 +74,16 @@ export const apartmentSchema = z.object({
     .int('Этаж должен быть целым числом')
     .positive('Этаж должен быть больше 0')
     .max(100, 'Этаж не может превышать 100'),
-  price: z
-    .coerce.number()
-    .positive('Цена должна быть больше 0')
-    .max(1_000_000_000, 'Слишком высокая цена'),
+  price: z.preprocess(
+    normalizeIntegerMoney,
+    z
+      .number({
+        message: 'Укажите цену квартиры',
+      })
+      .int('Цена должна быть указана в целых рублях')
+      .positive('Цена должна быть больше 0')
+      .max(1_000_000_000, 'Слишком высокая цена')
+  ),
   photos: z
     .array(z.string().url('Некорректный URL фотографии'))
     .max(10, 'Максимум 10 фотографий')

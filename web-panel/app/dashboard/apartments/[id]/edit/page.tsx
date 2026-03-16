@@ -1,14 +1,15 @@
-/**
- * Страница редактирования квартиры
- */
-
 'use client';
 
-import { useState, useActionState, useEffect, useRef } from 'react';
-import { useRouter, useParams } from 'next/navigation';
-import { updateApartmentAction, getApartmentByIdAction } from '@/lib/apartments/actions';
+import { useActionState, useEffect, useRef, useState } from 'react';
+import { useParams, useRouter } from 'next/navigation';
+import Link from 'next/link';
+import { ArrowLeft, Loader2 } from 'lucide-react';
+import { getApartmentByIdAction, updateApartmentAction } from '@/lib/apartments/actions';
 import { getDistrictsAction } from '@/lib/districts/actions';
+import type { Apartment } from '@/lib/db/schema';
+import { FINISHING_TYPES } from '@/lib/validators';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -18,150 +19,131 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { PhotoUploader } from '@/components/ui/upload/photo-uploader';
-import { ArrowLeft, Loader2 } from 'lucide-react';
-import Link from 'next/link';
-import { FINISHING_TYPES } from '@/lib/validators';
-import type { Apartment } from '@/lib/db/schema';
-
-// ============================================
-// Страница редактирования квартиры
-// ============================================
 
 export default function EditApartmentPage() {
   const router = useRouter();
   const params = useParams();
   const apartmentId = params.id as string;
 
-  // Состояние для фото
   const [photos, setPhotos] = useState<(File | string)[]>([]);
   const [deletedPhotoUrls, setDeletedPhotoUrls] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [apartment, setApartment] = useState<Apartment | null>(null);
   const [districts, setDistricts] = useState<Array<{ id: string; name: string }>>([]);
-
-  // Ref для формы
   const formRef = useRef<HTMLFormElement>(null);
 
-  // Загрузка данных
   useEffect(() => {
     async function loadData() {
       try {
-        const [aptResult, distResult] = await Promise.all([
+        const [apartmentResult, districtsResult] = await Promise.all([
           getApartmentByIdAction(apartmentId),
           getDistrictsAction(),
         ]);
 
-        if (aptResult.success && aptResult.apartment) {
-          setApartment(aptResult.apartment);
-          setPhotos(aptResult.apartment.photos || []);
+        if (apartmentResult.success && apartmentResult.apartment) {
+          setApartment(apartmentResult.apartment);
+          setPhotos(apartmentResult.apartment.photos || []);
         }
 
-        if (distResult.success && distResult.districts) {
-          setDistricts(distResult.districts);
+        if (districtsResult.success && districtsResult.districts) {
+          setDistricts(districtsResult.districts);
         }
       } catch (error) {
-        console.error('Failed to load data:', error);
+        console.error('Failed to load apartment edit data:', error);
       } finally {
         setLoading(false);
       }
     }
-    loadData();
+
+    void loadData();
   }, [apartmentId]);
 
-  // useActionState для работы с Server Action
   const [state, formAction, isPending] = useActionState<
     { success: boolean; error?: string },
     FormData
-  >(async (prevState, formData) => {
-    // Добавляем новые фото в FormData
-    photos.forEach((photo) => {
-      if (photo instanceof File) {
-        formData.append('photoFiles', photo);
+  >(
+    async (_prevState, formData) => {
+      photos.forEach((photo) => {
+        if (photo instanceof File) {
+          formData.append('photoFiles', photo);
+        }
+      });
+
+      photos.forEach((photo) => {
+        if (typeof photo === 'string' && !deletedPhotoUrls.includes(photo)) {
+          formData.append('currentPhotos', photo);
+        }
+      });
+
+      deletedPhotoUrls.forEach((url) => {
+        formData.append('deletedPhotoUrls', url);
+      });
+
+      const result = await updateApartmentAction(apartmentId, formData);
+
+      if (result.success && result.apartment) {
+        formRef.current?.reset();
+        router.push('/dashboard/apartments');
+        router.refresh();
       }
-    });
 
-    // Добавляем текущие фото (строки URL), кроме удалённых
-    photos.forEach((photo) => {
-      if (typeof photo === 'string' && !deletedPhotoUrls.includes(photo)) {
-        formData.append('currentPhotos', photo);
-      }
-    });
-
-    // Добавляем URL удалённых фото
-    deletedPhotoUrls.forEach((url) => {
-      formData.append('deletedPhotoUrls', url);
-    });
-
-    const result = await updateApartmentAction(apartmentId, formData);
-
-    if (result.success && result.apartment) {
-      router.push('/dashboard/apartments');
-      router.refresh();
-    }
-
-    return result;
-  }, { success: false });
+      return result;
+    },
+    { success: false }
+  );
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <Loader2 className="w-8 h-8 animate-spin" />
+      <div className="flex min-h-screen items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin" />
       </div>
     );
   }
 
   if (!apartment) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
+      <div className="flex min-h-screen items-center justify-center">
         <p className="text-gray-500">Квартира не найдена</p>
       </div>
     );
   }
 
+  const apartmentPrice = Math.round(Number(apartment.price)).toString();
+
   return (
     <div className="space-y-6">
-      {/* Заголовок */}
       <div className="flex items-center gap-4">
         <Button variant="ghost" size="icon" asChild>
           <Link href="/dashboard/apartments">
-            <ArrowLeft className="w-5 h-5" />
+            <ArrowLeft className="h-5 w-5" />
           </Link>
         </Button>
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Редактирование квартиры</h1>
-          <p className="text-gray-500 mt-1">
-            Измените информацию о квартире
-          </p>
+          <p className="mt-1 text-gray-500">Измените информацию о квартире</p>
         </div>
       </div>
 
-      {/* Форма */}
       <Card>
         <CardHeader>
           <CardTitle>Основная информация</CardTitle>
-          <CardDescription>
-            Измените данные квартиры
-          </CardDescription>
+          <CardDescription>Измените данные квартиры</CardDescription>
         </CardHeader>
         <CardContent>
           <form ref={formRef} action={formAction} className="space-y-6">
-            {/* Название */}
             <div className="space-y-2">
               <Label htmlFor="name">Название</Label>
               <Input
                 id="name"
                 name="name"
                 defaultValue={apartment.name}
-                placeholder="2-к квартира, 65 м²"
+                placeholder="Квартира №1"
                 required
               />
             </div>
 
-            {/* Район и отделка */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* Район */}
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="districtId">Район</Label>
                 <Select name="districtId" defaultValue={apartment.districtId}>
@@ -178,7 +160,6 @@ export default function EditApartmentPage() {
                 </Select>
               </div>
 
-              {/* Отделка */}
               <div className="space-y-2">
                 <Label htmlFor="finishing">Отделка</Label>
                 <Select name="finishing" defaultValue={apartment.finishing}>
@@ -196,21 +177,12 @@ export default function EditApartmentPage() {
               </div>
             </div>
 
-            {/* Комнаты, площадь, этаж */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {/* Комнаты */}
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
               <div className="space-y-2">
                 <Label htmlFor="rooms">Комнаты</Label>
-                <Input
-                  id="rooms"
-                  name="rooms"
-                  defaultValue={apartment.rooms}
-                  placeholder="2"
-                  required
-                />
+                <Input id="rooms" name="rooms" defaultValue={apartment.rooms} placeholder="2" required />
               </div>
 
-              {/* Площадь */}
               <div className="space-y-2">
                 <Label htmlFor="area">Площадь (м²)</Label>
                 <Input
@@ -224,7 +196,6 @@ export default function EditApartmentPage() {
                 />
               </div>
 
-              {/* Этаж */}
               <div className="space-y-2">
                 <Label htmlFor="floor">Этаж</Label>
                 <Input
@@ -238,41 +209,37 @@ export default function EditApartmentPage() {
               </div>
             </div>
 
-            {/* Цена */}
             <div className="space-y-2">
               <Label htmlFor="price">Цена (₽)</Label>
               <Input
                 id="price"
                 name="price"
-                type="number"
-                defaultValue={apartment.price}
+                type="text"
+                inputMode="numeric"
+                defaultValue={apartmentPrice}
                 placeholder="15000000"
                 required
               />
+              <p className="text-xs text-gray-500">Указывайте цену целым числом, без копеек.</p>
             </div>
 
-            {/* Фотографии */}
             <PhotoUploader
               label="Фотографии квартиры"
               maxPhotos={10}
-              existingPhotos={photos.filter((p): p is string => typeof p === 'string')}
+              existingPhotos={photos.filter((photo): photo is string => typeof photo === 'string')}
               onChange={setPhotos}
               onExistingPhotoDelete={(url) => {
                 setDeletedPhotoUrls((prev) => [...prev, url]);
               }}
             />
 
-            {/* Сообщение об ошибке */}
-            {state?.error && (
-              <div className="text-red-600 text-sm">{state.error}</div>
-            )}
+            {state?.error && <div className="text-sm text-red-600">{state.error}</div>}
 
-            {/* Кнопки действий */}
             <div className="flex items-center gap-4">
               <Button type="submit" disabled={isPending}>
                 {isPending ? (
                   <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     Сохранение...
                   </>
                 ) : (
