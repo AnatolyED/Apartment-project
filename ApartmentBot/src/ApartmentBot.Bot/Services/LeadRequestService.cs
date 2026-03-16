@@ -172,6 +172,7 @@ public sealed class LeadRequestService : ILeadRequestService
             phone: normalizedPhone,
             apartmentName: apartmentName,
             clientId: userId,
+            clientUsername: message.From?.Username,
             cancellationToken: cancellationToken);
 
         await SendCompletionMessagesAsync(
@@ -207,7 +208,7 @@ public sealed class LeadRequestService : ILeadRequestService
             userId,
             "📝 **Заявка на консультацию**\n\n" +
             $"Спасибо, {text}! Теперь введите ваш **номер телефона**.\n\n" +
-            "Можно ввести номер вручную в формате `+79991234567` или нажать кнопку ниже 👇",
+            "Можно ввести номер вручную в формате `+79991234567`, `7-999-123-45-67`, `7 999 123 45 67` или нажать кнопку ниже 👇",
             ParseMode.Markdown,
             CreateContactKeyboard("📱 Поделиться телефоном"),
             cancellationToken);
@@ -226,7 +227,7 @@ public sealed class LeadRequestService : ILeadRequestService
                 botClient,
                 userId,
                 "❌ Некорректный номер телефона.\n\n" +
-                "Введите номер в формате `+79991234567`, `89991234567` или отправьте контакт кнопкой ниже.",
+                "Введите номер в формате `+79991234567`, `89991234567`, `7-999-123-45-67` или отправьте контакт кнопкой ниже.",
                 ParseMode.Markdown,
                 CreateContactKeyboard("📱 Поделиться телефоном"),
                 cancellationToken);
@@ -250,6 +251,7 @@ public sealed class LeadRequestService : ILeadRequestService
             phone: normalizedPhone,
             apartmentName: apartmentName,
             clientId: userId,
+            clientUsername: null,
             cancellationToken: cancellationToken);
 
         await SendCompletionMessagesAsync(
@@ -299,6 +301,7 @@ public sealed class LeadRequestService : ILeadRequestService
         string phone,
         string apartmentName,
         long clientId,
+        string? clientUsername,
         CancellationToken cancellationToken)
     {
         var managerChatId = _telegramSettings.Value.ManagerChatId;
@@ -308,16 +311,19 @@ public sealed class LeadRequestService : ILeadRequestService
             return;
         }
 
+        var profileLine = BuildProfileLine(clientUsername);
+
         try
         {
             await _telegramMessageService.SendMessageAsync(
                 botClient,
                 managerChatId.Value,
                 $"{title}\n\n" +
-                $"👤 Клиент: [{clientName}](tg://user?id={clientId})\n" +
+                $"👤 Клиент: {clientName}\n" +
+                $"🆔 Telegram ID: `{clientId}`\n" +
                 $"📱 Телефон: `{phone}`\n" +
                 $"🏠 Объект: {apartmentName}\n" +
-                $"🔗 [Открыть профиль клиента](tg://user?id={clientId})",
+                $"🔗 {profileLine}",
                 ParseMode.Markdown,
                 cancellationToken: cancellationToken);
 
@@ -327,6 +333,26 @@ public sealed class LeadRequestService : ILeadRequestService
         {
             _logger.LogError(ex, "Ошибка отправки уведомления менеджеру в чат {ChatId}", managerChatId.Value);
         }
+    }
+
+    private static string BuildProfileLine(string? clientUsername)
+    {
+        if (string.IsNullOrWhiteSpace(clientUsername))
+        {
+            return "Профиль клиента: недоступен";
+        }
+
+        var escapedUsername = EscapeMarkdown(clientUsername);
+        return $"[Открыть профиль клиента](https://t.me/{escapedUsername})";
+    }
+
+    private static string EscapeMarkdown(string value)
+    {
+        return value
+            .Replace("_", "\\_")
+            .Replace("*", "\\*")
+            .Replace("[", "\\[")
+            .Replace("`", "\\`");
     }
 
     private static bool TryNormalizePhone(string? rawPhone, out string normalizedPhone)

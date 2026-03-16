@@ -88,7 +88,7 @@ public sealed class LeadRequestServiceTests
             x => x.SendMessageAsync(
                 It.IsAny<ITelegramBotClient>(),
                 It.Is<ChatId>(chatId => chatId.Identifier == 777),
-                It.IsAny<string>(),
+                It.Is<string>(text => text.Contains("7-999-123-45-67")),
                 ParseMode.Markdown,
                 It.Is<ReplyMarkup>(markup => markup is ReplyKeyboardMarkup),
                 It.IsAny<CancellationToken>()),
@@ -96,7 +96,7 @@ public sealed class LeadRequestServiceTests
     }
 
     [Fact]
-    public async Task HandleConsultationPhoneInputAsync_NotifiesManager_RemovesReplyKeyboard_AndShowsStartButton()
+    public async Task HandleConsultationPhoneInputAsync_NormalizesHumanReadablePhone_AndShowsUnavailableProfile()
     {
         var userStateService = new Mock<IUserStateService>();
         var telegramMessageService = new Mock<ITelegramMessageService>();
@@ -116,7 +116,7 @@ public sealed class LeadRequestServiceTests
         await service.HandleConsultationPhoneInputAsync(
             Mock.Of<ITelegramBotClient>(),
             777,
-            "+79990001122",
+            "7-999-000-33-03",
             state,
             CancellationToken.None);
 
@@ -129,7 +129,7 @@ public sealed class LeadRequestServiceTests
             x => x.SendMessageAsync(
                 It.IsAny<ITelegramBotClient>(),
                 It.Is<ChatId>(chatId => chatId.Identifier == 99887766),
-                It.IsAny<string>(),
+                It.Is<string>(text => text.Contains("`+79990003303`") && text.Contains("Профиль клиента: недоступен")),
                 ParseMode.Markdown,
                 null,
                 It.IsAny<CancellationToken>()),
@@ -252,7 +252,7 @@ public sealed class LeadRequestServiceTests
     }
 
     [Fact]
-    public async Task HandleContactResponseAsync_WithContact_RemovesReplyKeyboard_AndShowsStartButton()
+    public async Task HandleContactResponseAsync_WithUsername_SendsProfileLink()
     {
         var userStateService = new Mock<IUserStateService>();
         var telegramMessageService = new Mock<ITelegramMessageService>();
@@ -273,6 +273,13 @@ public sealed class LeadRequestServiceTests
             777,
             new Message
             {
+                From = new User
+                {
+                    Id = 777,
+                    IsBot = false,
+                    FirstName = "Иван",
+                    Username = "madina_client"
+                },
                 Contact = new Contact
                 {
                     FirstName = "Иван",
@@ -291,7 +298,7 @@ public sealed class LeadRequestServiceTests
             x => x.SendMessageAsync(
                 It.IsAny<ITelegramBotClient>(),
                 It.Is<ChatId>(chatId => chatId.Identifier == 44556677),
-                It.IsAny<string>(),
+                It.Is<string>(text => text.Contains("https://t.me/madina\\_client")),
                 ParseMode.Markdown,
                 null,
                 It.IsAny<CancellationToken>()),
