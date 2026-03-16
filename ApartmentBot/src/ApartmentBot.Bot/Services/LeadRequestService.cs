@@ -1,0 +1,294 @@
+using ApartmentBot.Application.Services;
+using ApartmentBot.Bot.Keyboards;
+using ApartmentBot.Domain.Interfaces;
+using ApartmentBot.Infrastructure.Configuration;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using Telegram.Bot;
+using Telegram.Bot.Types;
+using Telegram.Bot.Types.Enums;
+using Telegram.Bot.Types.ReplyMarkups;
+
+namespace ApartmentBot.Bot.Services;
+
+public interface ILeadRequestService
+{
+    Task BeginManagerContactAsync(
+        ITelegramBotClient botClient,
+        long userId,
+        string apartmentName,
+        string apartmentInfo,
+        CancellationToken cancellationToken);
+
+    Task BeginConsultationAsync(
+        ITelegramBotClient botClient,
+        long userId,
+        string apartmentName,
+        string apartmentInfo,
+        CancellationToken cancellationToken);
+
+    Task HandleContactResponseAsync(
+        ITelegramBotClient botClient,
+        long userId,
+        Message message,
+        UserState state,
+        CancellationToken cancellationToken);
+
+    Task HandleConsultationNameInputAsync(
+        ITelegramBotClient botClient,
+        long userId,
+        string text,
+        UserState state,
+        CancellationToken cancellationToken);
+
+    Task HandleConsultationPhoneInputAsync(
+        ITelegramBotClient botClient,
+        long userId,
+        string text,
+        UserState state,
+        CancellationToken cancellationToken);
+}
+
+public sealed class LeadRequestService : ILeadRequestService
+{
+    private readonly IUserStateService _userStateService;
+    private readonly ITelegramMessageService _telegramMessageService;
+    private readonly IOptions<TelegramSettings> _telegramSettings;
+    private readonly ILogger<LeadRequestService> _logger;
+
+    public LeadRequestService(
+        IUserStateService userStateService,
+        ITelegramMessageService telegramMessageService,
+        IOptions<TelegramSettings> telegramSettings,
+        ILogger<LeadRequestService> logger)
+    {
+        _userStateService = userStateService;
+        _telegramMessageService = telegramMessageService;
+        _telegramSettings = telegramSettings;
+        _logger = logger;
+    }
+
+    public async Task BeginManagerContactAsync(
+        ITelegramBotClient botClient,
+        long userId,
+        string apartmentName,
+        string apartmentInfo,
+        CancellationToken cancellationToken)
+    {
+        await _telegramMessageService.SendMessageAsync(
+            botClient,
+            userId,
+            $"📞 **Связь с менеджером**\n\n" +
+            $"Вас заинтересовал объект:\n" +
+            $"```\n{apartmentInfo}\n```\n\n" +
+            "Пожалуйста, поделитесь своим контактом, чтобы менеджер мог связаться с вами.\n\n" +
+            "Нажмите кнопку ниже 👇",
+            ParseMode.Markdown,
+            CreateContactKeyboard("📱 Поделиться контактом"),
+            cancellationToken);
+
+        var state = await _userStateService.GetStateAsync(userId, cancellationToken);
+        state.CurrentStep = BotStep.ContactManager;
+        state.RequestedApartmentName = apartmentName;
+        state.ConsultationClientName = null;
+        await _userStateService.SetStateAsync(userId, state, cancellationToken);
+    }
+
+    public async Task BeginConsultationAsync(
+        ITelegramBotClient botClient,
+        long userId,
+        string apartmentName,
+        string apartmentInfo,
+        CancellationToken cancellationToken)
+    {
+        await _telegramMessageService.SendMessageAsync(
+            botClient,
+            userId,
+            $"📝 **Заявка на консультацию**\n\n" +
+            $"Вас заинтересовал объект:\n" +
+            $"```\n{apartmentInfo}\n```\n\n" +
+            "Пожалуйста, введите ваше **имя**:",
+            ParseMode.Markdown,
+            KeyboardFactory.CreateCancelKeyboard(),
+            cancellationToken);
+
+        var state = await _userStateService.GetStateAsync(userId, cancellationToken);
+        state.CurrentStep = BotStep.ConsultationName;
+        state.RequestedApartmentName = apartmentName;
+        state.ConsultationClientName = null;
+        await _userStateService.SetStateAsync(userId, state, cancellationToken);
+    }
+
+    public async Task HandleContactResponseAsync(
+        ITelegramBotClient botClient,
+        long userId,
+        Message message,
+        UserState state,
+        CancellationToken cancellationToken)
+    {
+        if (message.Contact is null)
+        {
+            await _telegramMessageService.SendMessageAsync(
+                botClient,
+                userId,
+                "❌ Пожалуйста, поделитесь контактом через кнопку ниже:",
+                ParseMode.None,
+                CreateContactKeyboard("📱 Поделиться контактом"),
+                cancellationToken);
+            return;
+        }
+
+        var phone = message.Contact.PhoneNumber;
+        var firstName = message.Contact.FirstName;
+        var apartmentName = state.RequestedApartmentName ?? "Неизвестно";
+
+        _logger.LogInformation(
+            "Заявка на связь: User={UserId}, Name={Name}, Phone={Phone}, Apartment={ApartmentName}",
+            userId,
+            firstName,
+            phone,
+            apartmentName);
+
+        await NotifyManagerAsync(
+            botClient,
+            title: "📞 **Новая заявка: связь с менеджером**",
+            clientName: firstName,
+            phone: phone,
+            apartmentName: apartmentName,
+            clientId: userId,
+            cancellationToken: cancellationToken);
+
+        await _telegramMessageService.SendMessageAsync(
+            botClient,
+            userId,
+            $"✅ **Спасибо!**\n\n" +
+            "Менеджер свяжется с вами в ближайшее время.\n\n" +
+            $"📱 Телефон: `{phone}`\n" +
+            $"👤 Имя: {firstName}\n" +
+            $"🏠 Объект: {apartmentName}",
+            ParseMode.Markdown,
+            new ReplyKeyboardRemove(),
+            cancellationToken);
+
+        state.CurrentStep = BotStep.ViewApartments;
+        state.PendingInput = null;
+        state.RequestedApartmentName = null;
+        state.ConsultationClientName = null;
+        await _userStateService.SetStateAsync(userId, state, cancellationToken);
+    }
+
+    public async Task HandleConsultationNameInputAsync(
+        ITelegramBotClient botClient,
+        long userId,
+        string text,
+        UserState state,
+        CancellationToken cancellationToken)
+    {
+        state.ConsultationClientName = text;
+        state.CurrentStep = BotStep.ConsultationPhone;
+        await _userStateService.SetStateAsync(userId, state, cancellationToken);
+
+        await _telegramMessageService.SendMessageAsync(
+            botClient,
+            userId,
+            "📝 **Заявка на консультацию**\n\n" +
+            $"Спасибо, {text}! Теперь введите ваш **номер телефона**.\n\n" +
+            "Или нажмите кнопку ниже 👇",
+            ParseMode.Markdown,
+            CreateContactKeyboard("📱 Поделиться телефоном"),
+            cancellationToken);
+    }
+
+    public async Task HandleConsultationPhoneInputAsync(
+        ITelegramBotClient botClient,
+        long userId,
+        string text,
+        UserState state,
+        CancellationToken cancellationToken)
+    {
+        var apartmentName = state.RequestedApartmentName ?? "Неизвестно";
+        var clientName = state.ConsultationClientName ?? "Не указано";
+
+        _logger.LogInformation(
+            "Заявка на консультацию: User={UserId}, Name={Name}, Phone={Phone}, Apartment={ApartmentName}",
+            userId,
+            clientName,
+            text,
+            apartmentName);
+
+        await NotifyManagerAsync(
+            botClient,
+            title: "📝 **Новая заявка: консультация**",
+            clientName: clientName,
+            phone: text,
+            apartmentName: apartmentName,
+            clientId: userId,
+            cancellationToken: cancellationToken);
+
+        await _telegramMessageService.SendMessageAsync(
+            botClient,
+            userId,
+            "✅ Заявка принята.\n\n" +
+            "Менеджер свяжется с вами в ближайшее время.\n\n" +
+            $"📱 Телефон: {text}\n" +
+            $"👤 Имя: {clientName}\n" +
+            $"🏠 Объект: {apartmentName}",
+            ParseMode.Markdown,
+            cancellationToken: cancellationToken);
+
+        state.CurrentStep = BotStep.ViewApartments;
+        state.PendingInput = null;
+        state.RequestedApartmentName = null;
+        state.ConsultationClientName = null;
+        await _userStateService.SetStateAsync(userId, state, cancellationToken);
+    }
+
+    private async Task NotifyManagerAsync(
+        ITelegramBotClient botClient,
+        string title,
+        string clientName,
+        string phone,
+        string apartmentName,
+        long clientId,
+        CancellationToken cancellationToken)
+    {
+        var managerChatId = _telegramSettings.Value.ManagerChatId;
+        if (!managerChatId.HasValue)
+        {
+            _logger.LogWarning("ManagerChatId не настроен. Уведомление не отправлено.");
+            return;
+        }
+
+        try
+        {
+            await _telegramMessageService.SendMessageAsync(
+                botClient,
+                managerChatId.Value,
+                $"{title}\n\n" +
+                $"👤 Клиент: [{clientName}](tg://user?id={clientId})\n" +
+                $"📱 Телефон: `{phone}`\n" +
+                $"🏠 Объект: {apartmentName}\n" +
+                $"🔗 [Открыть профиль клиента](tg://user?id={clientId})",
+                ParseMode.Markdown,
+                cancellationToken: cancellationToken);
+
+            _logger.LogInformation("Уведомление менеджеру отправлено в чат {ChatId}", managerChatId.Value);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Ошибка отправки уведомления менеджеру в чат {ChatId}", managerChatId.Value);
+        }
+    }
+
+    private static ReplyKeyboardMarkup CreateContactKeyboard(string buttonText)
+    {
+        return new ReplyKeyboardMarkup(new[]
+        {
+            new[] { KeyboardButton.WithRequestContact(buttonText) }
+        })
+        {
+            ResizeKeyboard = true,
+            OneTimeKeyboard = true
+        };
+    }
+}

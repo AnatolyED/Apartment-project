@@ -1,0 +1,30 @@
+# Environment and secrets
+.env
+.env.*
+!.env.docker.example
+
+# AI/internal notes and docs
+*.md
+*.md.bak
+
+# Build artifacts
+**/bin/
+**/obj/
+**/.next/
+**/out/
+**/dist/
+**/coverage/
+
+# Node/.NET local caches
+**/node_modules/
+.dotnet/
+.codex-runlogs/
+
+# IDE and OS files
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+Thumbs.db
+Desktop.ini
