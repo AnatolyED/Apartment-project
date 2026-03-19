@@ -4,6 +4,7 @@
     <Project Path="src/ApartmentBot.Bot/ApartmentBot.Bot.csproj" />
     <Project Path="src/ApartmentBot.Domain/ApartmentBot.Domain.csproj" />
     <Project Path="src/ApartmentBot.Infrastructure/ApartmentBot.Infrastructure.csproj" />
+    <Project Path="src/ApartmentBot.Max/ApartmentBot.Max.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/ApartmentBot.Tests/ApartmentBot.Tests.csproj" />

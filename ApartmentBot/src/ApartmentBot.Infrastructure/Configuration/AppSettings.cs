@@ -10,7 +10,17 @@ public sealed class TelegramSettings
 {
     public const string SectionName = "Telegram";
     public string BotToken { get; init; } = string.Empty;
-    public long? ManagerChatId { get; init; } = null; // ID чата менеджера для заявок
+    public long? ManagerChatId { get; init; }
+}
+
+public sealed class MaxSettings
+{
+    public const string SectionName = "Max";
+    public string BotToken { get; init; } = string.Empty;
+    public string ReceiveMode { get; init; } = "Polling";
+    public string? WebhookUrl { get; init; }
+    public string? WebhookSecret { get; init; }
+    public int HttpTimeoutSeconds { get; init; } = 15;
 }
 
 public sealed class RedisSettings

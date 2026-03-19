@@ -1,0 +1,60 @@
+ApartmentBot.Max architecture foundation
+=======================================
+
+Current target
+--------------
+- Keep the working Telegram bot untouched.
+- Add MAX as a second messenger host on the same application/infrastructure stack.
+- Reuse Application + Infrastructure layers first.
+
+Layering
+--------
+1. ApartmentBot.Application
+   - business use cases
+   - city/district/apartment services
+   - user state service
+
+2. ApartmentBot.Infrastructure
+   - WebPanel API client
+   - Redis state/cache
+   - shared configuration
+
+3. ApartmentBot.Bot
+   - Telegram transport host
+   - Telegram-specific handler, runtime, keyboards, media and retry pipeline
+
+4. ApartmentBot.Max
+   - MAX transport host
+   - MaxMessenger.Bot runtime + update handler
+   - channel-specific mapping and delivery
+
+Recommended migration strategy
+------------------------------
+Phase 1:
+- launch MAX host
+- wire polling/webhook and health endpoints
+- answer /start
+
+Phase 2:
+- extract channel-neutral catalog orchestration from Telegram services
+- keep message rendering and keyboard building channel-specific
+
+Phase 3:
+- implement MAX equivalents for:
+  - city selection
+  - district selection
+  - apartment list
+  - apartment card
+  - consultation / lead flow
+
+Phase 4:
+- align feature parity:
+  - media
+  - filters
+  - callbacks
+  - diagnostics
+
+Important rule
+--------------
+Do not refactor the existing Telegram bot directly into MAX.
+Instead, move reusable logic down into shared services and keep transport-specific behavior inside each host project.

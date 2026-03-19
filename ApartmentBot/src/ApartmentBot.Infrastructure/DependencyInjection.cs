@@ -17,15 +17,14 @@ public static class DependencyInjection
 {
     public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration configuration)
     {
-        // Настройки
         services.Configure<WebPanelSettings>(configuration.GetSection(WebPanelSettings.SectionName));
         services.Configure<TelegramSettings>(configuration.GetSection(TelegramSettings.SectionName));
+        services.Configure<MaxSettings>(configuration.GetSection(MaxSettings.SectionName));
         services.Configure<RedisSettings>(configuration.GetSection(RedisSettings.SectionName));
 
         var redisSettings = configuration.GetSection(RedisSettings.SectionName).Get<RedisSettings>() ?? new RedisSettings();
         ConfigureRedis(services, redisSettings);
 
-        // HTTP Client с Polly
         services.AddHttpClient<IWebPanelApiClient, WebPanelApiClient>((sp, client) =>
         {
             var config = sp.GetRequiredService<IConfiguration>();
@@ -36,7 +35,6 @@ public static class DependencyInjection
         .AddTransientHttpErrorPolicy(policy => policy.WaitAndRetryAsync(3, _ => TimeSpan.FromMilliseconds(500)))
         .AddTransientHttpErrorPolicy(policy => policy.CircuitBreakerAsync(5, TimeSpan.FromSeconds(30)));
 
-        // Repositories
         services.AddSingleton<ICityRepository, WebPanelCityRepository>();
         services.AddSingleton<IDistrictRepository, WebPanelDistrictRepository>();
         services.AddSingleton<IApartmentRepository, WebPanelApartmentRepository>();
@@ -61,7 +59,7 @@ public static class DependencyInjection
                 throw new InvalidOperationException($"Redis connection was created but is not connected. ConnectionString={connectionString}");
             }
 
-            logger.LogInformation("Redis подключен: {ConnectionString}", connectionString);
+            logger.LogInformation("Redis connected: {ConnectionString}", connectionString);
             return redisConnection;
         });
 
