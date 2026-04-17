@@ -30,6 +30,13 @@ public interface IApartmentPresentationService
         int messageId,
         CancellationToken cancellationToken);
 
+    Task ShowCitySearchModeAsync(
+        ITelegramBotClient botClient,
+        long userId,
+        CityDto city,
+        int messageId,
+        CancellationToken cancellationToken);
+
     Task ShowApartmentDetailsAsync(
         ITelegramBotClient botClient,
         long userId,
@@ -82,37 +89,59 @@ public sealed class ApartmentPresentationService : IApartmentPresentationService
         int messageId,
         CancellationToken cancellationToken)
     {
-        if (!state.SelectedDistrictId.HasValue)
+        if (!state.SelectedCityId.HasValue)
         {
             return;
         }
 
-        var currentDistrict = await _districtService.GetDistrictByIdAsync(
-            state.SelectedDistrictId.Value,
-            cancellationToken);
+        var isCitySearch = state.SearchMode == ApartmentSearchMode.ByCity;
+        if (!isCitySearch && !state.SelectedDistrictId.HasValue)
+        {
+            return;
+        }
 
-        state.SelectedDistrictName = currentDistrict?.Name ?? state.SelectedDistrictName;
-        state.SelectedDistrictPhotoUrl = currentDistrict?.Photos?.FirstOrDefault();
-        await _userStateService.SetStateAsync(userId, state, cancellationToken);
+        IReadOnlyDictionary<Guid, string> districtNames = new Dictionary<Guid, string>();
+        if (state.SelectedCityId.HasValue)
+        {
+            var cityDistricts = await _districtService.GetDistrictsByCityIdAsync(state.SelectedCityId.Value, cancellationToken);
+            districtNames = cityDistricts.ToDictionary(d => d.Id, d => d.Name);
+        }
+
+        DistrictDto? currentDistrict = null;
+        if (!isCitySearch && state.SelectedDistrictId.HasValue)
+        {
+            currentDistrict = await _districtService.GetDistrictByIdAsync(state.SelectedDistrictId.Value, cancellationToken);
+            state.SelectedDistrictName = currentDistrict?.Name ?? state.SelectedDistrictName;
+            state.SelectedDistrictPhotoUrl = currentDistrict?.Photos?.FirstOrDefault();
+            await _userStateService.SetStateAsync(userId, state, cancellationToken);
+        }
 
         var apartments = await _apartmentService.GetApartmentsAsync(
-            districtId: state.SelectedDistrictId.Value,
+            districtId: isCitySearch ? null : state.SelectedDistrictId,
+            cityId: isCitySearch ? state.SelectedCityId : null,
             filters: state.CurrentFilters.HasActiveFilters ? state.CurrentFilters : null,
             page: state.CurrentPage,
             limit: 20,
             cancellationToken: cancellationToken);
 
+        var navigationKeyboard = KeyboardFactory.CreateApartmentListNavigationKeyboard(
+            state.CurrentPage,
+            apartments.TotalPages,
+            state.CurrentFilters.HasActiveFilters,
+            state.SearchMode);
+
         if (apartments.Apartments.Count == 0)
         {
+            var emptyMessage = isCitySearch
+                ? "🏠 В выбранном городе квартиры по этим параметрам не найдены.\n\nПопробуйте изменить фильтры."
+                : "🏠 Квартиры не найдены.\n\nПопробуйте изменить фильтры или выбрать другой район.";
+
             await SendOrEditApartmentListMessageAsync(
                 botClient,
                 userId,
                 messageId,
-                "🏠 Квартиры не найдены.\n\nПопробуйте изменить фильтры или выбрать другой район.",
-                KeyboardFactory.CreateApartmentListNavigationKeyboard(
-                    state.CurrentPage,
-                    apartments.TotalPages,
-                    state.CurrentFilters.HasActiveFilters),
+                emptyMessage,
+                navigationKeyboard,
                 cancellationToken);
             return;
         }
@@ -120,7 +149,10 @@ public sealed class ApartmentPresentationService : IApartmentPresentationService
         var keyboard = new List<List<InlineKeyboardButton>>();
         foreach (var apartment in apartments.Apartments)
         {
-            var buttonText = $"{apartment.Name} | {ApartmentMessageFormatter.FormatArea(apartment.Area)}";
+            var districtLabel = isCitySearch && districtNames.TryGetValue(apartment.DistrictId, out var districtName)
+                ? $"{districtName} | "
+                : string.Empty;
+            var buttonText = $"{districtLabel}{apartment.Name} | {ApartmentMessageFormatter.FormatArea(apartment.Area)}";
             keyboard.Add(
             [
                 InlineKeyboardButton.WithCallbackData(
@@ -129,19 +161,18 @@ public sealed class ApartmentPresentationService : IApartmentPresentationService
             ]);
         }
 
-        foreach (var row in KeyboardFactory.CreateApartmentListNavigationKeyboard(
-                     state.CurrentPage,
-                     apartments.TotalPages,
-                     state.CurrentFilters.HasActiveFilters).InlineKeyboard)
+        foreach (var row in navigationKeyboard.InlineKeyboard)
         {
             keyboard.Add(row.ToList());
         }
 
-        var message = $"🏠 Доступно квартир: {apartments.Total}\n\nВыберите квартиру:";
-        var photoUrl = state.SelectedDistrictPhotoUrl;
+        var listTitle = isCitySearch
+            ? $"🏙 {state.SelectedCityName}\n\nНайдено квартир: {apartments.Total}\nВыберите квартиру:"
+            : $"📍 {state.SelectedDistrictName}\n\nНайдено квартир: {apartments.Total}\nВыберите квартиру:";
 
-        if (!string.IsNullOrEmpty(photoUrl))
+        if (!isCitySearch && !string.IsNullOrEmpty(state.SelectedDistrictPhotoUrl))
         {
+            var photoUrl = state.SelectedDistrictPhotoUrl;
             var shouldSendDistrictPhoto =
                 state.DistrictPhotoShownForDistrictId != state.SelectedDistrictId ||
                 !string.Equals(state.DistrictPhotoShownForPhotoUrl, photoUrl, StringComparison.Ordinal);
@@ -149,7 +180,6 @@ public sealed class ApartmentPresentationService : IApartmentPresentationService
             if (shouldSendDistrictPhoto)
             {
                 var fullUrl = _telegramMediaService.BuildWebPanelFileUrl(photoUrl);
-                _logger.LogInformation("Загрузка фото района: {Url}", fullUrl);
 
                 try
                 {
@@ -158,9 +188,9 @@ public sealed class ApartmentPresentationService : IApartmentPresentationService
                         userId,
                         photoUrl,
                         fullUrl,
-                        message,
+                        listTitle,
                         new InlineKeyboardMarkup(keyboard),
-                        "район",
+                        "district",
                         cancellationToken);
 
                     state.DistrictPhotoShownForDistrictId = state.SelectedDistrictId;
@@ -181,20 +211,11 @@ public sealed class ApartmentPresentationService : IApartmentPresentationService
                         }
                     }
 
-                    _logger.LogInformation("Фото района успешно отправлено");
                     return;
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogWarning(ex, "Не удалось загрузить фото района. Отправляем текст.");
-                    await SendOrEditApartmentListMessageAsync(
-                        botClient,
-                        userId,
-                        messageId,
-                        "Фото района временно недоступно, поэтому показываю список квартир без изображения.\n\n" + message,
-                        new InlineKeyboardMarkup(keyboard),
-                        cancellationToken);
-                    return;
+                    _logger.LogWarning(ex, "Не удалось отправить фото района, продолжаем текстовой выдачей.");
                 }
             }
         }
@@ -203,7 +224,7 @@ public sealed class ApartmentPresentationService : IApartmentPresentationService
             botClient,
             userId,
             messageId,
-            message,
+            listTitle,
             new InlineKeyboardMarkup(keyboard),
             cancellationToken);
     }
@@ -216,43 +237,24 @@ public sealed class ApartmentPresentationService : IApartmentPresentationService
         int messageId,
         CancellationToken cancellationToken)
     {
-        var keyboard = KeyboardFactory.CreateDistrictKeyboard(districts, city?.Id);
+        var keyboard = KeyboardFactory.CreateDistrictKeyboard(districts, city?.Id, backToCityMode: true);
         var message = city != null
             ? $"🏙 {city.Name}\n\n📍 Выберите район:"
             : "📍 Выберите район:";
 
-        try
-        {
-            await _telegramRetryService.ExecuteAsync(
-                "EditMessageText:DistrictList",
-                ct => botClient.EditMessageText(
-                    userId,
-                    messageId,
-                    message,
-                    replyMarkup: keyboard,
-                    cancellationToken: ct),
-                cancellationToken);
-        }
-        catch (Exception ex) when (ex.Message.Contains("not modified", StringComparison.OrdinalIgnoreCase))
-        {
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(
-                ex,
-                "Не удалось обновить сообщение со списком районов. Отправляем новое сообщение. UserId={UserId}, MessageId={MessageId}",
-                userId,
-                messageId);
+        await SendOrEditTextMessageAsync(botClient, userId, messageId, message, keyboard, cancellationToken);
+    }
 
-            await _telegramRetryService.ExecuteAsync(
-                "SendMessage:DistrictListFallback",
-                ct => botClient.SendMessage(
-                    userId,
-                    message,
-                    replyMarkup: keyboard,
-                    cancellationToken: ct),
-                cancellationToken);
-        }
+    public async Task ShowCitySearchModeAsync(
+        ITelegramBotClient botClient,
+        long userId,
+        CityDto city,
+        int messageId,
+        CancellationToken cancellationToken)
+    {
+        var message = $"🏙 {city.Name}\n\nЧто удобнее?";
+        var keyboard = KeyboardFactory.CreateCitySearchModeKeyboard(city.Id);
+        await SendOrEditTextMessageAsync(botClient, userId, messageId, message, keyboard, cancellationToken);
     }
 
     public async Task ShowApartmentDetailsAsync(
@@ -266,27 +268,21 @@ public sealed class ApartmentPresentationService : IApartmentPresentationService
         {
             await _telegramRetryService.ExecuteAsync(
                 "SendMessage:ApartmentNotFound",
-                ct => botClient.SendMessage(
-                    userId,
-                    "❌ Квартира не найдена.",
-                    cancellationToken: ct),
+                ct => botClient.SendMessage(userId, "❌ Квартира не найдена.", cancellationToken: ct),
                 cancellationToken);
             return;
         }
 
-        var message = _apartmentMessageFormatter.FormatApartmentMessage(apartment);
+        var state = await _userStateService.GetStateAsync(userId, cancellationToken);
+        var districtName = state.SearchMode == ApartmentSearchMode.ByCity
+            ? (await _districtService.GetDistrictByIdAsync(apartment.DistrictId, cancellationToken))?.Name
+            : null;
+
+        var message = _apartmentMessageFormatter.FormatApartmentMessage(apartment, districtName);
         var replyMarkup = KeyboardFactory.CreateApartmentDetailsKeyboard(
             _telegramSettings.Value.ManagerChatId,
             apartment.Photos.Count > 1);
         var photoUrl = apartment.Photos.FirstOrDefault();
-        var state = await _userStateService.GetStateAsync(userId, cancellationToken);
-
-        _logger.LogInformation(
-            "Показ квартиры: Id={Id}, Name={Name}, Photos={PhotosCount}, FirstPhoto={PhotoUrl}",
-            apartment.Id,
-            apartment.Name,
-            apartment.Photos.Count,
-            photoUrl);
 
         if (!string.IsNullOrEmpty(photoUrl))
         {
@@ -307,7 +303,6 @@ public sealed class ApartmentPresentationService : IApartmentPresentationService
             }
 
             var fullUrl = _telegramMediaService.BuildWebPanelFileUrl(photoUrl);
-            _logger.LogInformation("Загрузка фото: {Url}", fullUrl);
 
             try
             {
@@ -318,33 +313,27 @@ public sealed class ApartmentPresentationService : IApartmentPresentationService
                     fullUrl,
                     message,
                     replyMarkup,
-                    "квартира",
+                    "apartment",
                     cancellationToken);
 
                 state.ApartmentPhotoShownForApartmentId = apartment.Id;
                 state.ApartmentPhotoShownForPhotoUrl = photoUrl;
+                state.SelectedApartmentSummary = message;
                 await _userStateService.SetStateAsync(userId, state, cancellationToken);
-
-                _logger.LogInformation("Фото успешно отправлено");
                 return;
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Не удалось загрузить фото. Отправляем только текст. URL: {Url}", fullUrl);
+                _logger.LogWarning(ex, "Не удалось отправить фото квартиры, продолжаем текстовой карточкой.");
             }
         }
-        else
-        {
-            _logger.LogInformation("Фото не найдено");
-        }
+
+        state.SelectedApartmentSummary = message;
+        await _userStateService.SetStateAsync(userId, state, cancellationToken);
 
         await _telegramRetryService.ExecuteAsync(
             "SendMessage:ApartmentDetailsFallback",
-            ct => botClient.SendMessage(
-                userId,
-                (string.IsNullOrEmpty(photoUrl) ? string.Empty : "Фото временно недоступно, поэтому показываю описание.\n\n") + message,
-                replyMarkup: replyMarkup,
-                cancellationToken: ct),
+            ct => botClient.SendMessage(userId, message, replyMarkup: replyMarkup, cancellationToken: ct),
             cancellationToken);
     }
 
@@ -359,10 +348,7 @@ public sealed class ApartmentPresentationService : IApartmentPresentationService
         {
             await _telegramRetryService.ExecuteAsync(
                 "SendMessage:ApartmentGalleryEmpty",
-                ct => botClient.SendMessage(
-                    userId,
-                    "У этой квартиры пока нет дополнительных фото.",
-                    cancellationToken: ct),
+                ct => botClient.SendMessage(userId, "У этой квартиры пока нет дополнительных фото.", cancellationToken: ct),
                 cancellationToken);
             return;
         }
@@ -397,24 +383,19 @@ public sealed class ApartmentPresentationService : IApartmentPresentationService
         loadStopwatch.Stop();
 
         _logger.LogInformation(
-            "Медиа-пайплайн: {EntityType} — подготовка фото завершена за {ElapsedMs} мс",
+            "Подготовка фото для {EntityType} завершена за {ElapsedMs} мс",
             entityType,
             loadStopwatch.ElapsedMilliseconds);
 
         var sendStopwatch = Stopwatch.StartNew();
         await _telegramRetryService.ExecuteAsync(
             $"SendPhoto:{entityType}",
-            ct => botClient.SendPhoto(
-                userId,
-                inputFile,
-                caption,
-                replyMarkup: replyMarkup,
-                cancellationToken: ct),
+            ct => botClient.SendPhoto(userId, inputFile, caption, replyMarkup: replyMarkup, cancellationToken: ct),
             cancellationToken);
         sendStopwatch.Stop();
 
         _logger.LogInformation(
-            "Медиа-пайплайн: {EntityType} — отправка фото в Telegram заняла {ElapsedMs} мс",
+            "Отправка фото для {EntityType} в Telegram заняла {ElapsedMs} мс",
             entityType,
             sendStopwatch.ElapsedMilliseconds);
     }
@@ -427,37 +408,7 @@ public sealed class ApartmentPresentationService : IApartmentPresentationService
         InlineKeyboardMarkup replyMarkup,
         CancellationToken cancellationToken)
     {
-        if (messageId != 0)
-        {
-            try
-            {
-                await _telegramRetryService.ExecuteAsync(
-                    "EditMessageText:ApartmentList",
-                    ct => botClient.EditMessageText(
-                        userId,
-                        messageId,
-                        message,
-                        replyMarkup: replyMarkup,
-                        cancellationToken: ct),
-                    cancellationToken);
-                return;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogDebug(
-                    ex,
-                    "Не удалось обновить текущее сообщение со списком квартир. Отправляем новое сообщение.");
-            }
-        }
-
-        await _telegramRetryService.ExecuteAsync(
-            "SendMessage:ApartmentList",
-            ct => botClient.SendMessage(
-                userId,
-                message,
-                replyMarkup: replyMarkup,
-                cancellationToken: ct),
-            cancellationToken);
+        await SendOrEditTextMessageAsync(botClient, userId, messageId, message, replyMarkup, cancellationToken);
     }
 
     private async Task SendOrEditTextMessageAsync(
@@ -473,31 +424,20 @@ public sealed class ApartmentPresentationService : IApartmentPresentationService
             try
             {
                 await _telegramRetryService.ExecuteAsync(
-                    "EditMessageText:TextFallback",
-                    ct => botClient.EditMessageText(
-                        userId,
-                        messageId,
-                        message,
-                        replyMarkup: replyMarkup,
-                        cancellationToken: ct),
+                    "EditMessageText:Presentation",
+                    ct => botClient.EditMessageText(userId, messageId, message, replyMarkup: replyMarkup, cancellationToken: ct),
                     cancellationToken);
                 return;
             }
             catch (Exception ex)
             {
-                _logger.LogDebug(
-                    ex,
-                    "Не удалось обновить текущее текстовое сообщение. Отправляем новое сообщение.");
+                _logger.LogDebug(ex, "Не удалось обновить текущее сообщение, отправляем новое.");
             }
         }
 
         await _telegramRetryService.ExecuteAsync(
-            "SendMessage:TextFallback",
-            ct => botClient.SendMessage(
-                userId,
-                message,
-                replyMarkup: replyMarkup,
-                cancellationToken: ct),
+            "SendMessage:PresentationFallback",
+            ct => botClient.SendMessage(userId, message, replyMarkup: replyMarkup, cancellationToken: ct),
             cancellationToken);
     }
 }

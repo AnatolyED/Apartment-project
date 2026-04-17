@@ -124,7 +124,7 @@ public sealed class FilterWorkflowService : IFilterWorkflowService
                 break;
 
             case "back":
-                if (state.SelectedDistrictId.HasValue)
+                if (HasApartmentSearchContext(state))
                 {
                     await showApartmentListAsync();
                 }
@@ -145,7 +145,7 @@ public sealed class FilterWorkflowService : IFilterWorkflowService
                 state.CurrentPage = 1;
                 await _userStateService.SetStateAsync(userId, state, cancellationToken);
 
-                if (state.SelectedDistrictId.HasValue)
+                if (HasApartmentSearchContext(state))
                 {
                     await showApartmentListAsync();
                 }
@@ -325,6 +325,11 @@ public sealed class FilterWorkflowService : IFilterWorkflowService
             return;
         }
 
+        if (value == "Подчистовая")
+        {
+            value = "Вайт бокс";
+        }
+
         state.CurrentFilters.Finishing = value switch
         {
             "Чистовая" => FinishingType.Чистовая,
@@ -463,5 +468,11 @@ public sealed class FilterWorkflowService : IFilterWorkflowService
             .Replace(" ", string.Empty)
             .Replace("\u00A0", string.Empty)
             .Replace("\u202F", string.Empty);
+    }
+
+    private static bool HasApartmentSearchContext(UserState state)
+    {
+        return state.SelectedCityId.HasValue &&
+               (state.SearchMode == ApartmentSearchMode.ByCity || state.SelectedDistrictId.HasValue);
     }
 }

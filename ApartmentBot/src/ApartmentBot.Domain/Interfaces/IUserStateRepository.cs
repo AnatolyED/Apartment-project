@@ -13,22 +13,30 @@ public enum BotStep
 {
     Start = 0,
     SelectCity = 1,
-    SelectDistrict = 2,
-    ViewApartments = 3,
-    FilterInput = 4,
-    FilterPriceMin = 5,
-    FilterPriceMax = 6,
-    FilterAreaMin = 7,
-    FilterAreaMax = 8,
-    ContactManager = 9,
-    ConsultationName = 10,
-    ConsultationPhone = 11
+    SelectSearchMode = 2,
+    SelectDistrict = 3,
+    ViewApartments = 4,
+    FilterInput = 5,
+    FilterPriceMin = 6,
+    FilterPriceMax = 7,
+    FilterAreaMin = 8,
+    FilterAreaMax = 9,
+    ContactManager = 10,
+    ConsultationName = 11,
+    ConsultationPhone = 12
+}
+
+public enum ApartmentSearchMode
+{
+    ByDistrict = 0,
+    ByCity = 1
 }
 
 public sealed class UserState
 {
     public Guid? SelectedCityId { get; set; }
     public Guid? SelectedDistrictId { get; set; }
+    public ApartmentSearchMode SearchMode { get; set; } = ApartmentSearchMode.ByDistrict;
     public ApartmentFilters CurrentFilters { get; set; } = new();
     public int CurrentPage { get; set; } = 1;
     public BotStep CurrentStep { get; set; } = BotStep.Start;
@@ -43,6 +51,8 @@ public sealed class UserState
     public string? RequestedApartmentName { get; set; }
     public string? SelectedApartmentSummary { get; set; }
     public string? ConsultationClientName { get; set; }
+    public int? LeadRequestMessageId { get; set; }
+    public int? LeadContactPromptMessageId { get; set; }
     public DateTime LastActivityTime { get; set; } = DateTime.UtcNow;
     public Guid? SelectedApartmentId { get; set; }
 }

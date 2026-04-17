@@ -1,38 +1,21 @@
 using ApartmentBot.Domain.Entities;
 using ApartmentBot.Domain.Interfaces;
 using ApartmentBot.Infrastructure.ApiClient;
-using ApartmentBot.Infrastructure.Caching;
 
 namespace ApartmentBot.Infrastructure.Repositories;
 
 public sealed class WebPanelCityRepository : ICityRepository
 {
     private readonly IWebPanelApiClient _apiClient;
-    private readonly ICacheService _cacheService;
-    private readonly TimeSpan _cacheExpiration = TimeSpan.FromHours(1);
-    public WebPanelCityRepository(IWebPanelApiClient apiClient, ICacheService cacheService)
+
+    public WebPanelCityRepository(IWebPanelApiClient apiClient)
     {
         _apiClient = apiClient;
-        _cacheService = cacheService;
     }
 
     public async Task<IReadOnlyList<City>> GetAllAsync(bool onlyActive = true, CancellationToken cancellationToken = default)
     {
-        var cacheKey = CacheKeys.CitiesAll();
-        var cached = await _cacheService.GetAsync<IReadOnlyList<City>>(cacheKey, cancellationToken);
-        if (cached is not null && cached.Count > 0)
-        {
-            return cached;
-        }
-
-        var cities = await _apiClient.GetCitiesAsync(cancellationToken);
-
-        if (cities.Count > 0)
-        {
-            await _cacheService.SetAsync(cacheKey, cities, _cacheExpiration, cancellationToken);
-        }
-
-        return cities;
+        return await _apiClient.GetCitiesAsync(cancellationToken);
     }
 
     public async Task<City?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
@@ -45,32 +28,15 @@ public sealed class WebPanelCityRepository : ICityRepository
 public sealed class WebPanelDistrictRepository : IDistrictRepository
 {
     private readonly IWebPanelApiClient _apiClient;
-    private readonly ICacheService _cacheService;
-    private readonly TimeSpan _cacheExpiration = TimeSpan.FromHours(1);
 
-    public WebPanelDistrictRepository(IWebPanelApiClient apiClient, ICacheService cacheService)
+    public WebPanelDistrictRepository(IWebPanelApiClient apiClient)
     {
         _apiClient = apiClient;
-        _cacheService = cacheService;
     }
 
     public async Task<IReadOnlyList<District>> GetByCityIdAsync(Guid cityId, bool onlyActive = true, CancellationToken cancellationToken = default)
     {
-        var cacheKey = CacheKeys.DistrictsByCity(cityId);
-        var cached = await _cacheService.GetAsync<IReadOnlyList<District>>(cacheKey, cancellationToken);
-        if (cached is not null && cached.Count > 0)
-        {
-            return cached;
-        }
-
-        var districts = await _apiClient.GetDistrictsByCityIdAsync(cityId, cancellationToken);
-
-        if (districts.Count > 0)
-        {
-            await _cacheService.SetAsync(cacheKey, districts, _cacheExpiration, cancellationToken);
-        }
-
-        return districts;
+        return await _apiClient.GetDistrictsByCityIdAsync(cityId, cancellationToken);
     }
 
     public async Task<District?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
@@ -95,13 +61,10 @@ public sealed class WebPanelDistrictRepository : IDistrictRepository
 public sealed class WebPanelApartmentRepository : IApartmentRepository
 {
     private readonly IWebPanelApiClient _apiClient;
-    private readonly ICacheService _cacheService;
-    private readonly TimeSpan _cacheExpiration = TimeSpan.FromMinutes(5);
 
-    public WebPanelApartmentRepository(IWebPanelApiClient apiClient, ICacheService cacheService)
+    public WebPanelApartmentRepository(IWebPanelApiClient apiClient)
     {
         _apiClient = apiClient;
-        _cacheService = cacheService;
     }
 
     public async Task<ApartmentPagedList> GetPagedListAsync(
@@ -118,15 +81,7 @@ public sealed class WebPanelApartmentRepository : IApartmentRepository
         string sort = "created_desc",
         CancellationToken cancellationToken = default)
     {
-        var cacheKey = CacheKeys.ApartmentsPage(districtId, cityId, finishing, rooms, priceMin, priceMax, areaMin, areaMax, page, limit, sort);
-
-        var cached = await _cacheService.GetAsync<ApartmentPagedList>(cacheKey, cancellationToken);
-        if (cached is not null)
-        {
-            return cached;
-        }
-
-        var result = await _apiClient.GetApartmentsAsync(
+        return await _apiClient.GetApartmentsAsync(
             districtId: districtId,
             cityId: cityId,
             finishing: finishing,
@@ -139,13 +94,6 @@ public sealed class WebPanelApartmentRepository : IApartmentRepository
             limit: limit,
             sort: sort,
             cancellationToken: cancellationToken);
-
-        if (result.Apartments.Count > 0 || result.Total > 0)
-        {
-            await _cacheService.SetAsync(cacheKey, result, _cacheExpiration, cancellationToken);
-        }
-
-        return result;
     }
 
     public async Task<Apartment?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)

@@ -19,7 +19,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Filter } from 'lucide-react';
-import { FINISHING_TYPES } from '@/lib/validators';
+import { FINISHING_OPTIONS } from '@/lib/validators';
 import { getCitiesAction } from '@/lib/cities/actions';
 import type { getDistrictsAction } from '@/lib/districts/actions';
 
@@ -200,9 +200,9 @@ export function ApartmentsFilters({ districts, cities, initialFilters = {} }: Fi
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="any">Любая</SelectItem>
-                  {FINISHING_TYPES.map((type) => (
-                    <SelectItem key={type} value={type}>
-                      {type}
+                  {FINISHING_OPTIONS.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
                     </SelectItem>
                   ))}
                 </SelectContent>

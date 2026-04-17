@@ -184,7 +184,7 @@ public sealed class ApartmentPresentationServiceTests
 
         Assert.NotNull(capturedRequest);
         Assert.Equal("EditMessageTextRequest", capturedRequest!.GetType().Name);
-        Assert.Contains("Доступно квартир: 1", GetStringProperty(capturedRequest, "Text"));
+        Assert.Contains("Выберите квартиру:", GetStringProperty(capturedRequest, "Text"));
         Assert.Contains("65 м²", GetReplyMarkupButtonTexts(capturedRequest));
     }
 

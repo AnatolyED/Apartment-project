@@ -13,6 +13,7 @@ import {
 } from '@/lib/apartments/actions';
 import { getCitiesAction } from '@/lib/cities/actions';
 import { getDistrictsAction } from '@/lib/districts/actions';
+import { formatFinishingLabel } from '@/lib/validators';
 
 function getStringParam(
   searchParams: { [key: string]: string | string[] | undefined },
@@ -109,9 +110,7 @@ async function ApartmentsTable({
   const districtsMap = new Map(
     districtsResult.districts?.map((district) => [district.id, district.name]) || []
   );
-  const citiesMap = new Map(
-    citiesResult.cities?.map((city) => [city.id, city.name]) || []
-  );
+  const citiesMap = new Map(citiesResult.cities?.map((city) => [city.id, city.name]) || []);
 
   const getCityName = (districtId: string) => {
     const district = districtsResult.districts?.find((item) => item.id === districtId);
@@ -129,7 +128,6 @@ async function ApartmentsTable({
     { key: 'finishing', label: 'Отделка', sortable: true },
     { key: 'rooms', label: 'Комнат', sortable: true },
     { key: 'area', label: 'Площадь', sortable: true },
-    { key: 'floor', label: 'Этаж', sortable: true },
     { key: 'price', label: 'Цена', sortable: true },
   ];
 
@@ -155,6 +153,7 @@ async function ApartmentsTable({
           ...apartment,
           districtName: districtsMap.get(apartment.districtId) || 'Неизвестно',
           cityName: getCityName(apartment.districtId),
+          finishing: formatFinishingLabel(apartment.finishing),
           price: `${Number(apartment.price).toLocaleString('ru-RU')} ₽`,
           area: `${apartment.area} м²`,
         }))}
@@ -203,7 +202,7 @@ async function ApartmentsTable({
             );
           }
 
-          if (['area', 'price', 'floor', 'rooms'].includes(key)) {
+          if (['area', 'price', 'rooms'].includes(key)) {
             return <span className="font-medium text-gray-700">{typedItem[key] as React.ReactNode}</span>;
           }
 

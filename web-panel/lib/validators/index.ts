@@ -2,7 +2,16 @@ import { z } from 'zod';
 import { finishingEnum } from '@/lib/db/schema';
 
 export const FINISHING_TYPES = finishingEnum.enumValues;
+export const FINISHING_OPTIONS = [
+  { value: 'Чистовая', label: 'Чистовая' },
+  { value: 'Вайт бокс', label: 'Подчистовая' },
+  { value: 'Без отделки', label: 'Без отделки' },
+] as const;
 export const USER_ROLES = ['admin', 'moderator'] as const;
+
+export function formatFinishingLabel(value: string) {
+  return FINISHING_OPTIONS.find((option) => option.value === value)?.label ?? value;
+}
 
 function normalizeIntegerMoney(value: unknown) {
   if (typeof value === 'string') {
@@ -69,11 +78,6 @@ export const apartmentSchema = z.object({
     .coerce.number()
     .positive('Площадь должна быть больше 0')
     .max(1000, 'Площадь не может превышать 1000 м²'),
-  floor: z
-    .coerce.number()
-    .int('Этаж должен быть целым числом')
-    .positive('Этаж должен быть больше 0')
-    .max(100, 'Этаж не может превышать 100'),
   price: z.preprocess(
     normalizeIntegerMoney,
     z

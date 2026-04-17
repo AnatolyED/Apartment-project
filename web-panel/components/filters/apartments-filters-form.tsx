@@ -9,7 +9,7 @@ import { useState, useEffect } from 'react';
 import { Filter, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
-import { FINISHING_TYPES } from '@/lib/validators';
+import { FINISHING_OPTIONS } from '@/lib/validators';
 
 interface ApartmentsFiltersFormProps {
   cities: Array<{ id: string; name: string }>;
@@ -168,9 +168,9 @@ export function ApartmentsFiltersForm({
             className="flex h-10 w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
           >
             <option value="any">Любая</option>
-            {FINISHING_TYPES.map((type) => (
-              <option key={type} value={type}>
-                {type}
+            {FINISHING_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
               </option>
             ))}
           </select>

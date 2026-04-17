@@ -7,7 +7,7 @@ import { ArrowLeft, Loader2 } from 'lucide-react';
 import { getApartmentByIdAction, updateApartmentAction } from '@/lib/apartments/actions';
 import { getDistrictsAction } from '@/lib/districts/actions';
 import type { Apartment } from '@/lib/db/schema';
-import { FINISHING_TYPES } from '@/lib/validators';
+import { FINISHING_OPTIONS } from '@/lib/validators';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -134,13 +134,7 @@ export default function EditApartmentPage() {
           <form ref={formRef} action={formAction} className="space-y-6">
             <div className="space-y-2">
               <Label htmlFor="name">Название</Label>
-              <Input
-                id="name"
-                name="name"
-                defaultValue={apartment.name}
-                placeholder="Квартира №1"
-                required
-              />
+              <Input id="name" name="name" defaultValue={apartment.name} placeholder="Квартира №1" required />
             </div>
 
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -167,9 +161,9 @@ export default function EditApartmentPage() {
                     <SelectValue placeholder="Выберите отделку" />
                   </SelectTrigger>
                   <SelectContent>
-                    {FINISHING_TYPES.map((type) => (
-                      <SelectItem key={type} value={type}>
-                        {type}
+                    {FINISHING_OPTIONS.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -177,7 +171,7 @@ export default function EditApartmentPage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="rooms">Комнаты</Label>
                 <Input id="rooms" name="rooms" defaultValue={apartment.rooms} placeholder="2" required />
@@ -192,18 +186,6 @@ export default function EditApartmentPage() {
                   step="0.1"
                   defaultValue={apartment.area}
                   placeholder="65"
-                  required
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="floor">Этаж</Label>
-                <Input
-                  id="floor"
-                  name="floor"
-                  type="number"
-                  defaultValue={apartment.floor}
-                  placeholder="5"
                   required
                 />
               </div>

@@ -93,19 +93,18 @@ public sealed class ApartmentNavigationService : IApartmentNavigationService
             return;
         }
 
-        _logger.LogInformation("Выбор квартиры: Data={Data}, ApartmentId={ApartmentId}", data, apartmentId);
-
         var apartment = await _apartmentService.GetApartmentByIdAsync(apartmentId, cancellationToken);
         if (apartment is null)
         {
-            _logger.LogWarning("Квартира не найдена по Id: {ApartmentId}", apartmentId);
             await SendMessageAsync(botClient, userId, "❌ Квартира не найдена. Попробуйте выбрать другую.", cancellationToken);
             return;
         }
 
+        var districtName = await ResolveDistrictNameAsync(state, apartment, cancellationToken);
+
         state.SelectedApartmentId = apartmentId;
         state.RequestedApartmentName = apartment.Name;
-        state.SelectedApartmentSummary = _apartmentMessageFormatter.FormatApartmentMessage(apartment);
+        state.SelectedApartmentSummary = _apartmentMessageFormatter.FormatApartmentMessage(apartment, districtName);
         await _userStateService.SetStateAsync(userId, state, cancellationToken);
 
         await showApartmentDetailsAsync(apartment);
@@ -118,13 +117,6 @@ public sealed class ApartmentNavigationService : IApartmentNavigationService
         Func<string, string, Task> handleApartmentAsync,
         CancellationToken cancellationToken)
     {
-        if (!string.IsNullOrWhiteSpace(state.RequestedApartmentName) &&
-            !string.IsNullOrWhiteSpace(state.SelectedApartmentSummary))
-        {
-            await handleApartmentAsync(state.RequestedApartmentName, state.SelectedApartmentSummary);
-            return;
-        }
-
         if (!state.SelectedApartmentId.HasValue)
         {
             await SendMessageAsync(botClient, userId, "❌ Ошибка загрузки квартиры. Попробуйте выбрать другую.", cancellationToken);
@@ -138,7 +130,8 @@ public sealed class ApartmentNavigationService : IApartmentNavigationService
             return;
         }
 
-        var apartmentInfo = _apartmentMessageFormatter.FormatApartmentMessage(apartment);
+        var districtName = await ResolveDistrictNameAsync(state, apartment, cancellationToken);
+        var apartmentInfo = _apartmentMessageFormatter.FormatApartmentMessage(apartment, districtName);
         state.RequestedApartmentName = apartment.Name;
         state.SelectedApartmentSummary = apartmentInfo;
         await _userStateService.SetStateAsync(userId, state, cancellationToken);
@@ -162,7 +155,7 @@ public sealed class ApartmentNavigationService : IApartmentNavigationService
         var apartment = await _apartmentService.GetApartmentByIdAsync(state.SelectedApartmentId.Value, cancellationToken);
         if (apartment is null)
         {
-            await SendMessageAsync(botClient, userId, "❌ Квартира не найдена. Попробуйте выбрать её из списка заново.", cancellationToken);
+            await SendMessageAsync(botClient, userId, "❌ Квартира не найдена. Выберите ее из списка заново.", cancellationToken);
             return;
         }
 
@@ -185,7 +178,7 @@ public sealed class ApartmentNavigationService : IApartmentNavigationService
         {
             case "refresh":
             case "apply_filters":
-                if (state.SelectedDistrictId.HasValue)
+                if (HasApartmentSearchContext(state))
                 {
                     state.CurrentPage = 1;
                     await _userStateService.SetStateAsync(userId, state, cancellationToken);
@@ -194,11 +187,50 @@ public sealed class ApartmentNavigationService : IApartmentNavigationService
                 break;
 
             case "back_to_apartments":
-                if (state.SelectedDistrictId.HasValue)
+                if (HasApartmentSearchContext(state))
                 {
                     state.SelectedApartmentId = null;
                     state.SelectedApartmentSummary = null;
                     state.RequestedApartmentName = null;
+                    await _userStateService.SetStateAsync(userId, state, cancellationToken);
+                    await showApartmentListAsync();
+                }
+                break;
+
+            case "city_mode_districts":
+                if (state.SelectedCityId.HasValue)
+                {
+                    state.SearchMode = ApartmentSearchMode.ByDistrict;
+                    state.CurrentStep = BotStep.SelectDistrict;
+                    state.CurrentPage = 1;
+                    state.SelectedDistrictId = null;
+                    state.SelectedDistrictName = null;
+                    state.SelectedDistrictPhotoUrl = null;
+                    await _userStateService.SetStateAsync(userId, state, cancellationToken);
+
+                    var city = await _cityService.GetCityByIdAsync(state.SelectedCityId.Value, cancellationToken);
+                    var districts = await _districtService.GetDistrictsByCityIdAsync(state.SelectedCityId.Value, cancellationToken);
+                    await SendOrEditNavigationMessageAsync(
+                        botClient,
+                        userId,
+                        messageId,
+                        city != null ? $"🏙 {city.Name}\n\n📍 Выберите район:" : "📍 Выберите район:",
+                        KeyboardFactory.CreateDistrictKeyboard(districts, state.SelectedCityId.Value, backToCityMode: true),
+                        cancellationToken);
+                }
+                break;
+
+            case "city_mode_all":
+                if (state.SelectedCityId.HasValue)
+                {
+                    state.SearchMode = ApartmentSearchMode.ByCity;
+                    state.CurrentStep = BotStep.ViewApartments;
+                    state.CurrentPage = 1;
+                    state.SelectedDistrictId = null;
+                    state.SelectedDistrictName = null;
+                    state.SelectedDistrictPhotoUrl = null;
+                    state.DistrictPhotoShownForDistrictId = null;
+                    state.DistrictPhotoShownForPhotoUrl = null;
                     await _userStateService.SetStateAsync(userId, state, cancellationToken);
                     await showApartmentListAsync();
                 }
@@ -235,26 +267,78 @@ public sealed class ApartmentNavigationService : IApartmentNavigationService
                     cancellationToken);
                 break;
 
+            case "back_to_city_mode":
+                if (state.SelectedCityId.HasValue)
+                {
+                    state.CurrentStep = BotStep.SelectSearchMode;
+                    state.SelectedDistrictId = null;
+                    state.SelectedDistrictName = null;
+                    state.SelectedDistrictPhotoUrl = null;
+                    state.DistrictPhotoShownForDistrictId = null;
+                    state.DistrictPhotoShownForPhotoUrl = null;
+                    state.SelectedApartmentId = null;
+                    state.SelectedApartmentSummary = null;
+                    state.RequestedApartmentName = null;
+                    state.CurrentPage = 1;
+                    await _userStateService.SetStateAsync(userId, state, cancellationToken);
+
+                    var city = await _cityService.GetCityByIdAsync(state.SelectedCityId.Value, cancellationToken);
+                    if (city is not null)
+                    {
+                        await SendOrEditNavigationMessageAsync(
+                            botClient,
+                            userId,
+                            messageId,
+                            $"🏙 {city.Name}\n\nЧто удобнее?",
+                            KeyboardFactory.CreateCitySearchModeKeyboard(city.Id),
+                            cancellationToken);
+                    }
+                }
+                break;
+
             case "back_to_districts":
                 if (state.SelectedCityId.HasValue)
                 {
+                    state.SearchMode = ApartmentSearchMode.ByDistrict;
+                    state.CurrentStep = BotStep.SelectDistrict;
                     state.DistrictPhotoShownForDistrictId = null;
                     state.DistrictPhotoShownForPhotoUrl = null;
                     state.ApartmentPhotoShownForApartmentId = null;
                     state.ApartmentPhotoShownForPhotoUrl = null;
                     await _userStateService.SetStateAsync(userId, state, cancellationToken);
 
+                    var city = await _cityService.GetCityByIdAsync(state.SelectedCityId.Value, cancellationToken);
                     var districts = await _districtService.GetDistrictsByCityIdAsync(state.SelectedCityId.Value, cancellationToken);
                     await SendOrEditNavigationMessageAsync(
                         botClient,
                         userId,
                         messageId,
-                        "📍 Выберите район:",
-                        KeyboardFactory.CreateDistrictKeyboard(districts, state.SelectedCityId.Value),
+                        city != null ? $"🏙 {city.Name}\n\n📍 Выберите район:" : "📍 Выберите район:",
+                        KeyboardFactory.CreateDistrictKeyboard(districts, state.SelectedCityId.Value, backToCityMode: true),
                         cancellationToken);
                 }
                 break;
         }
+    }
+
+    private async Task<string?> ResolveDistrictNameAsync(
+        UserState state,
+        ApartmentDto apartment,
+        CancellationToken cancellationToken)
+    {
+        if (state.SearchMode != ApartmentSearchMode.ByCity)
+        {
+            return null;
+        }
+
+        var district = await _districtService.GetDistrictByIdAsync(apartment.DistrictId, cancellationToken);
+        return district?.Name;
+    }
+
+    private static bool HasApartmentSearchContext(UserState state)
+    {
+        return state.SelectedCityId.HasValue &&
+               (state.SearchMode == ApartmentSearchMode.ByCity || state.SelectedDistrictId.HasValue);
     }
 
     private async Task SendOrEditNavigationMessageAsync(
@@ -271,12 +355,7 @@ public sealed class ApartmentNavigationService : IApartmentNavigationService
             {
                 await _telegramRetryService.ExecuteAsync(
                     "EditMessageText:Navigation",
-                    ct => botClient.EditMessageText(
-                        userId,
-                        messageId,
-                        message,
-                        replyMarkup: replyMarkup,
-                        cancellationToken: ct),
+                    ct => botClient.EditMessageText(userId, messageId, message, replyMarkup: replyMarkup, cancellationToken: ct),
                     cancellationToken);
                 return;
             }

@@ -7,6 +7,14 @@ namespace ApartmentBot.Bot.Services;
 
 public interface ITelegramMessageService
 {
+    Task<Message> SendMessageAndReturnAsync(
+        ITelegramBotClient botClient,
+        ChatId chatId,
+        string text,
+        ParseMode parseMode = ParseMode.None,
+        ReplyMarkup? replyMarkup = null,
+        CancellationToken cancellationToken = default);
+
     Task SendMessageAsync(
         ITelegramBotClient botClient,
         ChatId chatId,
@@ -25,7 +33,24 @@ public sealed class TelegramMessageService : ITelegramMessageService
         _telegramRetryService = telegramRetryService;
     }
 
-    public Task SendMessageAsync(
+    public async Task SendMessageAsync(
+        ITelegramBotClient botClient,
+        ChatId chatId,
+        string text,
+        ParseMode parseMode = ParseMode.None,
+        ReplyMarkup? replyMarkup = null,
+        CancellationToken cancellationToken = default)
+    {
+        await SendMessageAndReturnAsync(
+            botClient,
+            chatId,
+            text,
+            parseMode,
+            replyMarkup,
+            cancellationToken);
+    }
+
+    public Task<Message> SendMessageAndReturnAsync(
         ITelegramBotClient botClient,
         ChatId chatId,
         string text,

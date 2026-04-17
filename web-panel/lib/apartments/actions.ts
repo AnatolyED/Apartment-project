@@ -158,7 +158,7 @@ export async function createApartmentAction(
       finishing: validatedData.finishing,
       rooms: validatedData.rooms,
       area: validatedData.area,
-      floor: validatedData.floor,
+      floor: 1,
       price: validatedData.price.toString(),
       photos: [],
       isActive: true,
@@ -564,7 +564,6 @@ export async function updateApartmentAction(
     if (validatedData.finishing !== undefined) updateData.finishing = validatedData.finishing;
     if (validatedData.rooms !== undefined) updateData.rooms = validatedData.rooms;
     if (validatedData.area !== undefined) updateData.area = validatedData.area;
-    if (validatedData.floor !== undefined) updateData.floor = validatedData.floor;
     if (validatedData.price !== undefined) updateData.price = validatedData.price.toString();
 
     const updated = await db

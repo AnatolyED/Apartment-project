@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, Loader2 } from 'lucide-react';
 import { createApartmentAction } from '@/lib/apartments/actions';
-import { FINISHING_TYPES } from '@/lib/validators';
+import { FINISHING_OPTIONS } from '@/lib/validators';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -106,9 +106,9 @@ export default function NewApartmentPage() {
                     <SelectValue placeholder="Выберите отделку" />
                   </SelectTrigger>
                   <SelectContent>
-                    {FINISHING_TYPES.map((type) => (
-                      <SelectItem key={type} value={type}>
-                        {type}
+                    {FINISHING_OPTIONS.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -116,7 +116,7 @@ export default function NewApartmentPage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="rooms">Комнаты</Label>
                 <Input id="rooms" name="rooms" placeholder="2" required />
@@ -125,11 +125,6 @@ export default function NewApartmentPage() {
               <div className="space-y-2">
                 <Label htmlFor="area">Площадь (м²)</Label>
                 <Input id="area" name="area" type="number" step="0.1" placeholder="65" required />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="floor">Этаж</Label>
-                <Input id="floor" name="floor" type="number" placeholder="5" required />
               </div>
             </div>
 

@@ -211,36 +211,21 @@ public sealed class TelegramBotHandler : IBotHandler
             // Если мы в процессе заполнения формы консультации
             else if (state.CurrentStep is BotStep.ConsultationName or BotStep.ConsultationPhone or BotStep.ContactManager)
             {
+                var leadRequestMessageId = state.LeadRequestMessageId;
+                var leadContactPromptMessageId = state.LeadContactPromptMessageId;
+
                 state.CurrentStep = BotStep.ViewApartments;
                 state.PendingInput = null;
                 state.RequestedApartmentName = null;
                 state.ConsultationClientName = null;
+                state.LeadRequestMessageId = null;
+                state.LeadContactPromptMessageId = null;
                 await _userStateService.SetStateAsync(userId, state, cancellationToken);
 
-                try
-                {
-                    await botClient.DeleteMessage(userId, message.MessageId, cancellationToken);
-                }
-                catch
-                {
-                    // Игнорируем ошибки удаления пользовательского сообщения
-                }
-
-                try
-                {
-                    await botClient.DeleteMessage(userId, message.MessageId - 1, cancellationToken);
-                }
-                catch
-                {
-                    // Игнорируем ошибки удаления предыдущего сообщения формы
-                }
-
-                await SendMessageAsync(
-                    botClient,
-                    userId,
-                    "Заявка отменена.",
-                    replyMarkup: new ReplyKeyboardRemove(),
-                    cancellationToken: cancellationToken);
+                await DeleteMessageIfExistsAsync(botClient, userId, message.MessageId, cancellationToken);
+                await DeleteMessageIfExistsAsync(botClient, userId, leadContactPromptMessageId, cancellationToken);
+                await DeleteMessageIfExistsAsync(botClient, userId, leadRequestMessageId, cancellationToken);
+                await RemoveReplyKeyboardSilentlyAsync(botClient, userId, cancellationToken);
             }
             else
             {
@@ -434,32 +419,29 @@ public sealed class TelegramBotHandler : IBotHandler
                 state.SelectedCityId = cityId;
                 state.SelectedCityName = null;
                 state.SelectedDistrictId = null;
+                state.SearchMode = ApartmentSearchMode.ByDistrict;
                 state.SelectedDistrictName = null;
                 state.SelectedDistrictPhotoUrl = null;
+                state.DistrictPhotoShownForDistrictId = null;
+                state.DistrictPhotoShownForPhotoUrl = null;
+                state.ApartmentPhotoShownForApartmentId = null;
+                state.ApartmentPhotoShownForPhotoUrl = null;
                 state.SelectedApartmentId = null;
                 state.SelectedApartmentSummary = null;
                 state.RequestedApartmentName = null;
-                state.CurrentStep = BotStep.SelectDistrict;
+                state.CurrentStep = BotStep.SelectSearchMode;
+                state.CurrentPage = 1;
+                state.CurrentFilters.Reset();
 
                 var city = await _cityService.GetCityByIdAsync(cityId, cancellationToken);
-                var districts = await _districtService.GetDistrictsByCityIdAsync(cityId, cancellationToken);
                 state.SelectedCityName = city?.Name;
                 await _userStateService.SetStateAsync(userId, state, cancellationToken);
-                
-                if (districts.Count == 0)
-                {
-                    await SendMessageAsync(botClient, userId, "В этом городе пока нет районов.", cancellationToken: cancellationToken);
-                    await AnswerCallbackOnceAsync();
-                    return;
-                }
 
-                // Отправляем фото города (если есть) и список районов
                 await AnswerCallbackOnceAsync();
-                await _apartmentPresentationService.ShowDistrictListAsync(
+                await _apartmentPresentationService.ShowCitySearchModeAsync(
                     botClient,
                     userId,
-                    city,
-                    districts,
+                    city!,
                     callbackQuery.Message!.MessageId,
                     cancellationToken);
                 return;
@@ -483,6 +465,7 @@ public sealed class TelegramBotHandler : IBotHandler
                 state.DistrictPhotoShownForPhotoUrl = null;
                 state.ApartmentPhotoShownForApartmentId = null;
                 state.ApartmentPhotoShownForPhotoUrl = null;
+                state.SearchMode = ApartmentSearchMode.ByDistrict;
                 state.SelectedApartmentId = null;
                 state.SelectedApartmentSummary = null;
                 state.RequestedApartmentName = null;
@@ -501,20 +484,8 @@ public sealed class TelegramBotHandler : IBotHandler
             }
 
             // Обработка кнопки "Связаться с менеджером"
-            if (data == "apt:contact")
-            {
-                await _apartmentNavigationService.HandleApartmentActionAsync(
-                    botClient,
-                    userId,
-                    state,
-                    (apartmentName, apartmentInfo) => HandleContactManagerAsync(botClient, userId, apartmentName, apartmentInfo, cancellationToken),
-                    cancellationToken);
-                await AnswerCallbackOnceAsync();
-                return;
-            }
-
-            // Обработка кнопки "Получить консультацию"
-            if (data == "apt:consultation")
+            // "apt:contact" оставляем как alias для уже отправленных старых карточек.
+            if (data == "apt:contact" || data == "apt:consultation")
             {
                 await _apartmentNavigationService.HandleApartmentActionAsync(
                     botClient,
@@ -638,21 +609,6 @@ public sealed class TelegramBotHandler : IBotHandler
         }
     }
 
-    private async Task HandleContactManagerAsync(
-        ITelegramBotClient botClient,
-        long userId,
-        string apartmentName,
-        string apartmentInfo,
-        CancellationToken cancellationToken)
-    {
-        await _leadRequestService.BeginManagerContactAsync(
-            botClient,
-            userId,
-            apartmentName,
-            apartmentInfo,
-            cancellationToken);
-    }
-
     private async Task HandleConsultationRequestAsync(
         ITelegramBotClient botClient,
         long userId,
@@ -660,7 +616,7 @@ public sealed class TelegramBotHandler : IBotHandler
         string apartmentInfo,
         CancellationToken cancellationToken)
     {
-        await _leadRequestService.BeginConsultationAsync(
+        await _leadRequestService.BeginManagerContactAsync(
             botClient,
             userId,
             apartmentName,
@@ -727,6 +683,7 @@ public sealed class TelegramBotHandler : IBotHandler
         state.SelectedCityId = null;
         state.SelectedCityName = null;
         state.SelectedDistrictId = null;
+        state.SearchMode = ApartmentSearchMode.ByDistrict;
         state.SelectedDistrictName = null;
         state.SelectedDistrictPhotoUrl = null;
         state.DistrictPhotoShownForDistrictId = null;
@@ -737,6 +694,8 @@ public sealed class TelegramBotHandler : IBotHandler
         state.SelectedApartmentSummary = null;
         state.RequestedApartmentName = null;
         state.ConsultationClientName = null;
+        state.LeadRequestMessageId = null;
+        state.LeadContactPromptMessageId = null;
         state.PendingInput = null;
         state.CurrentPage = 1;
         state.CurrentFilters.Reset();
@@ -745,7 +704,7 @@ public sealed class TelegramBotHandler : IBotHandler
     private static string FormatFinishing(FinishingType? finishing) => finishing switch
     {
         FinishingType.Чистовая => "Чистовая",
-        FinishingType.ВайтБокс => "Вайт бокс",
+        FinishingType.ВайтБокс => "Подчистовая",
         FinishingType.БезОтделки => "Без отделки",
         _ => "Любая"
     };
@@ -767,6 +726,56 @@ public sealed class TelegramBotHandler : IBotHandler
                 replyMarkup: replyMarkup,
                 cancellationToken: ct),
             cancellationToken);
+    }
+
+    private async Task DeleteMessageIfExistsAsync(
+        ITelegramBotClient botClient,
+        long userId,
+        int? messageId,
+        CancellationToken cancellationToken)
+    {
+        if (!messageId.HasValue)
+        {
+            return;
+        }
+
+        try
+        {
+            await _telegramRetryService.ExecuteAsync(
+                "DeleteMessage:Handler",
+                ct => botClient.DeleteMessage(userId, messageId.Value, ct),
+                cancellationToken);
+        }
+        catch
+        {
+            // Игнорируем ошибки удаления старых или уже удаленных сообщений.
+        }
+    }
+
+    private async Task RemoveReplyKeyboardSilentlyAsync(
+        ITelegramBotClient botClient,
+        long userId,
+        CancellationToken cancellationToken)
+    {
+        Message? cleanupMessage = null;
+
+        try
+        {
+            cleanupMessage = await _telegramRetryService.ExecuteAsync(
+                "SendMessage:ReplyKeyboardRemove",
+                ct => botClient.SendMessage(
+                    userId,
+                    "\u2063",
+                    replyMarkup: new ReplyKeyboardRemove(),
+                    cancellationToken: ct),
+                cancellationToken);
+        }
+        catch
+        {
+            return;
+        }
+
+        await DeleteMessageIfExistsAsync(botClient, userId, cleanupMessage.Id, cancellationToken);
     }
 
     private Task AnswerCallbackQueryAsync(

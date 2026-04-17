@@ -24,23 +24,50 @@ public static class KeyboardFactory
         return new InlineKeyboardMarkup(buttons);
     }
 
-    public static InlineKeyboardMarkup CreateDistrictKeyboard(IReadOnlyList<DistrictDto> districts, Guid? cityId = null)
+    public static InlineKeyboardMarkup CreateCitySearchModeKeyboard(Guid cityId)
     {
-        var buttons = districts.Select(d => new[]
-        {
-            InlineKeyboardButton.WithCallbackData(d.Name, new DistrictCallbackData { DistrictId = d.Id }.ToCallbackData())
-        }).ToList();
+        return new InlineKeyboardMarkup(
+        [
+            [InlineKeyboardButton.WithCallbackData("📍 Смотреть по районам", "nav:city_mode_districts")],
+            [InlineKeyboardButton.WithCallbackData("🔍 Подобрать по всему городу", "nav:city_mode_all")],
+            [
+                InlineKeyboardButton.WithCallbackData("🔙 Назад к городам", $"nav:back_to_cities:{cityId}"),
+                InlineKeyboardButton.WithCallbackData("🏠 В начало", "nav:back_to_start")
+            ]
+        ]);
+    }
+
+    public static InlineKeyboardMarkup CreateDistrictKeyboard(
+        IReadOnlyList<DistrictDto> districts,
+        Guid? cityId = null,
+        bool backToCityMode = false)
+    {
+        var comparer = StringComparer.Create(new CultureInfo("ru-RU"), ignoreCase: true);
+
+        var buttons = districts
+            .OrderBy(d => d.Name, comparer)
+            .Select(d => new[]
+            {
+                InlineKeyboardButton.WithCallbackData(d.Name, new DistrictCallbackData { DistrictId = d.Id }.ToCallbackData())
+            })
+            .ToList();
 
         buttons.Add(
         [
-            InlineKeyboardButton.WithCallbackData("🔙 Назад к городам", $"nav:back_to_cities:{cityId}"),
+            InlineKeyboardButton.WithCallbackData(
+                backToCityMode ? "🔙 Назад" : "🔙 Назад к городам",
+                backToCityMode ? "nav:back_to_city_mode" : $"nav:back_to_cities:{cityId}"),
             InlineKeyboardButton.WithCallbackData("🏠 В начало", "nav:back_to_start")
         ]);
 
         return new InlineKeyboardMarkup(buttons);
     }
 
-    public static InlineKeyboardMarkup CreateApartmentListNavigationKeyboard(int currentPage, int totalPages, bool hasFilters)
+    public static InlineKeyboardMarkup CreateApartmentListNavigationKeyboard(
+        int currentPage,
+        int totalPages,
+        bool hasFilters,
+        ApartmentSearchMode searchMode)
     {
         var keyboard = new List<List<InlineKeyboardButton>>();
 
@@ -65,7 +92,9 @@ public static class KeyboardFactory
         var actionRow = new List<InlineKeyboardButton>
         {
             InlineKeyboardButton.WithCallbackData("🔍 Фильтры", "apartments_filter:menu"),
-            InlineKeyboardButton.WithCallbackData("🔙 Назад", "nav:back_to_districts")
+            InlineKeyboardButton.WithCallbackData(
+                "🔙 Назад",
+                searchMode == ApartmentSearchMode.ByCity ? "nav:back_to_city_mode" : "nav:back_to_districts")
         };
 
         if (hasFilters)
@@ -80,16 +109,11 @@ public static class KeyboardFactory
 
     public static InlineKeyboardMarkup CreateApartmentDetailsKeyboard(long? managerChatId = null, bool hasGallery = false)
     {
-        var contactButton = managerChatId.HasValue
-            ? InlineKeyboardButton.WithUrl("Связаться с менеджером", $"tg://user?id={managerChatId.Value}")
-            : InlineKeyboardButton.WithCallbackData("Связаться с менеджером", "apt:contact");
-
         var keyboard = new List<List<InlineKeyboardButton>>
         {
             new()
             {
-                contactButton,
-                InlineKeyboardButton.WithCallbackData("Получить консультацию", "apt:consultation")
+                InlineKeyboardButton.WithCallbackData("💬 Получить консультацию", "apt:consultation")
             }
         };
 
@@ -107,6 +131,25 @@ public static class KeyboardFactory
         ]);
 
         return new InlineKeyboardMarkup(keyboard);
+    }
+
+    public static ReplyKeyboardMarkup CreateLeadContactRequestKeyboard()
+    {
+        return new ReplyKeyboardMarkup(new[]
+        {
+            new[]
+            {
+                KeyboardButton.WithRequestContact("📱 Отправить контакт")
+            },
+            new[]
+            {
+                new KeyboardButton("❌ Отмена")
+            }
+        })
+        {
+            ResizeKeyboard = true,
+            OneTimeKeyboard = true
+        };
     }
 
     public static InlineKeyboardMarkup CreateFilterKeyboard(ApartmentFilters currentFilters)
@@ -158,7 +201,7 @@ public static class KeyboardFactory
             },
             new[]
             {
-                InlineKeyboardButton.WithCallbackData("Вайт бокс", new FilterCallbackData { FilterType = "finishing", Value = "Вайт бокс" }.ToCallbackData())
+                InlineKeyboardButton.WithCallbackData("Подчистовая", new FilterCallbackData { FilterType = "finishing", Value = "Подчистовая" }.ToCallbackData())
             },
             new[]
             {
@@ -209,10 +252,18 @@ public static class KeyboardFactory
         };
     }
 
+    public static InlineKeyboardMarkup CreatePostLeadNavigationKeyboard()
+    {
+        return new InlineKeyboardMarkup(
+        [
+            [InlineKeyboardButton.WithCallbackData("🔙 Вернуться", "nav:back_to_start")]
+        ]);
+    }
+
     private static string FormatFinishing(FinishingType? finishing) => finishing switch
     {
         FinishingType.Чистовая => "Чистовая",
-        FinishingType.ВайтБокс => "Вайт бокс",
+        FinishingType.ВайтБокс => "Подчистовая",
         FinishingType.БезОтделки => "Без отделки",
         _ => "Любая"
     };
