@@ -6,7 +6,7 @@
 'use server';
 
 import { z } from 'zod';
-import { eq, and, desc, asc, count, gte, lte, sql } from 'drizzle-orm';
+import { eq, and, desc, asc, count, gte, lte, sql, type SQL } from 'drizzle-orm';
 import { revalidatePath } from 'next/cache';
 import { db } from '@/lib/db';
 import { apartments, districts, type Apartment, type NewApartment } from '@/lib/db/schema';
@@ -62,7 +62,7 @@ export interface ApartmentsQueryParams {
   areaMax?: number;
 }
 
-type ApartmentWhereCondition = ReturnType<typeof eq>;
+type ApartmentWhereCondition = SQL<unknown>;
 
 function buildApartmentWhereConditions(
   params: {
@@ -91,10 +91,10 @@ function buildApartmentWhereConditions(
     if (plusMatch) {
       const minRooms = Number.parseInt(plusMatch[1], 10);
       conditions.push(
-        gte(
-          sql<number>`CAST(NULLIF(regexp_replace(${apartments.rooms}, '\D', '', 'g'), '') AS integer)`,
-          minRooms
-        )
+        sql<boolean>`CASE
+          WHEN ${apartments.rooms} ~ '^[0-9]+$' THEN CAST(${apartments.rooms} AS integer) >= ${minRooms}
+          ELSE false
+        END`
       );
     } else {
       conditions.push(eq(apartments.rooms, params.rooms));
