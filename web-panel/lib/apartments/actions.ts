@@ -6,7 +6,7 @@
 'use server';
 
 import { z } from 'zod';
-import { eq, and, desc, asc, count, gte, lte } from 'drizzle-orm';
+import { eq, and, desc, asc, count, gte, lte, sql } from 'drizzle-orm';
 import { revalidatePath } from 'next/cache';
 import { db } from '@/lib/db';
 import { apartments, districts, type Apartment, type NewApartment } from '@/lib/db/schema';
@@ -86,7 +86,14 @@ function buildApartmentWhereConditions(
   }
 
   if (params.rooms) {
-    conditions.push(eq(apartments.rooms, params.rooms));
+    const plusMatch = params.rooms.match(/^(\d+)\+$/);
+
+    if (plusMatch) {
+      const minRooms = Number.parseInt(plusMatch[1], 10);
+      conditions.push(gte(sql<number>`CAST(${apartments.rooms} AS integer)`, minRooms));
+    } else {
+      conditions.push(eq(apartments.rooms, params.rooms));
+    }
   }
 
   if (params.priceMin !== undefined) {
