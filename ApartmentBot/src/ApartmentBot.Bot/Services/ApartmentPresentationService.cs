@@ -107,19 +107,19 @@ public sealed class ApartmentPresentationService : IApartmentPresentationService
             districtNames = cityDistricts.ToDictionary(d => d.Id, d => d.Name);
         }
 
-        DistrictDto? currentDistrict = null;
         if (!isCitySearch && state.SelectedDistrictId.HasValue)
         {
-            currentDistrict = await _districtService.GetDistrictByIdAsync(state.SelectedDistrictId.Value, cancellationToken);
+            var currentDistrict = await _districtService.GetDistrictByIdAsync(state.SelectedDistrictId.Value, cancellationToken);
             state.SelectedDistrictName = currentDistrict?.Name ?? state.SelectedDistrictName;
             state.SelectedDistrictPhotoUrl = currentDistrict?.Photos?.FirstOrDefault();
             await _userStateService.SetStateAsync(userId, state, cancellationToken);
         }
 
+        var currentFilters = state.GetCurrentFilters();
         var apartments = await _apartmentService.GetApartmentsAsync(
             districtId: isCitySearch ? null : state.SelectedDistrictId,
             cityId: isCitySearch ? state.SelectedCityId : null,
-            filters: state.CurrentFilters.HasActiveFilters ? state.CurrentFilters : null,
+            filters: currentFilters.HasActiveFilters ? currentFilters : null,
             page: state.CurrentPage,
             limit: 20,
             cancellationToken: cancellationToken);
@@ -127,7 +127,7 @@ public sealed class ApartmentPresentationService : IApartmentPresentationService
         var navigationKeyboard = KeyboardFactory.CreateApartmentListNavigationKeyboard(
             state.CurrentPage,
             apartments.TotalPages,
-            state.CurrentFilters.HasActiveFilters,
+            currentFilters.HasActiveFilters,
             state.SearchMode);
 
         if (apartments.Apartments.Count == 0)
@@ -136,7 +136,7 @@ public sealed class ApartmentPresentationService : IApartmentPresentationService
                 ? "🏠 В выбранном городе квартиры по этим параметрам не найдены.\n\nПопробуйте изменить фильтры."
                 : "🏠 Квартиры не найдены.\n\nПопробуйте изменить фильтры или выбрать другой район.";
 
-            await SendOrEditApartmentListMessageAsync(
+            await SendOrEditTextMessageAsync(
                 botClient,
                 userId,
                 messageId,
@@ -220,7 +220,7 @@ public sealed class ApartmentPresentationService : IApartmentPresentationService
             }
         }
 
-        await SendOrEditApartmentListMessageAsync(
+        await SendOrEditTextMessageAsync(
             botClient,
             userId,
             messageId,
@@ -252,7 +252,11 @@ public sealed class ApartmentPresentationService : IApartmentPresentationService
         int messageId,
         CancellationToken cancellationToken)
     {
-        var message = $"🏙 {city.Name}\n\nЧто удобнее?";
+        var state = await _userStateService.GetStateAsync(userId, cancellationToken);
+        var cityFiltersNote = state.CityFilters.HasActiveFilters
+            ? "\n\nНастроены фильтры по городу."
+            : string.Empty;
+        var message = $"🏙 {city.Name}\n\nЧто удобнее?{cityFiltersNote}";
         var keyboard = KeyboardFactory.CreateCitySearchModeKeyboard(city.Id);
         await SendOrEditTextMessageAsync(botClient, userId, messageId, message, keyboard, cancellationToken);
     }
@@ -398,17 +402,6 @@ public sealed class ApartmentPresentationService : IApartmentPresentationService
             "Отправка фото для {EntityType} в Telegram заняла {ElapsedMs} мс",
             entityType,
             sendStopwatch.ElapsedMilliseconds);
-    }
-
-    private async Task SendOrEditApartmentListMessageAsync(
-        ITelegramBotClient botClient,
-        long userId,
-        int messageId,
-        string message,
-        InlineKeyboardMarkup replyMarkup,
-        CancellationToken cancellationToken)
-    {
-        await SendOrEditTextMessageAsync(botClient, userId, messageId, message, replyMarkup, cancellationToken);
     }
 
     private async Task SendOrEditTextMessageAsync(

@@ -82,11 +82,12 @@ public sealed class FilterWorkflowService : IFilterWorkflowService
         CancellationToken cancellationToken)
     {
         var (filterType, value) = FilterCallbackData.Parse(data);
+        var filters = state.GetCurrentFilters();
 
         switch (filterType)
         {
             case "menu":
-                await SendFilterMenuAsync(botClient, userId, messageId, state.CurrentFilters, cancellationToken);
+                await SendFilterMenuAsync(botClient, userId, messageId, filters, cancellationToken);
                 break;
 
             case "finishing":
@@ -141,7 +142,7 @@ public sealed class FilterWorkflowService : IFilterWorkflowService
                 break;
 
             case "reset":
-                state.CurrentFilters.Reset();
+                filters.Reset();
                 state.CurrentPage = 1;
                 await _userStateService.SetStateAsync(userId, state, cancellationToken);
 
@@ -191,7 +192,7 @@ public sealed class FilterWorkflowService : IFilterWorkflowService
 
         if (TryParsePrice(text, out var price) && price <= 1_000_000_000)
         {
-            state.CurrentFilters.PriceMin = price;
+            state.GetCurrentFilters().PriceMin = price;
             state.CurrentStep = BotStep.FilterPriceMax;
             state.PendingInput = "price_max";
             await _userStateService.SetStateAsync(userId, state, cancellationToken);
@@ -225,11 +226,11 @@ public sealed class FilterWorkflowService : IFilterWorkflowService
 
         if (text != "/skip" && TryParsePrice(text, out var price) && price <= 1_000_000_000)
         {
-            state.CurrentFilters.PriceMax = price;
+            state.GetCurrentFilters().PriceMax = price;
         }
 
         await _userStateService.SetStateAsync(userId, state, cancellationToken);
-        await SendFilterMenuAsync(botClient, userId, 0, state.CurrentFilters, cancellationToken);
+        await SendFilterMenuAsync(botClient, userId, 0, state.GetCurrentFilters(), cancellationToken);
     }
 
     public async Task HandleAreaMinInputAsync(
@@ -256,7 +257,7 @@ public sealed class FilterWorkflowService : IFilterWorkflowService
 
         if (TryParseArea(text, out var area) && area <= 1000)
         {
-            state.CurrentFilters.AreaMin = area;
+            state.GetCurrentFilters().AreaMin = area;
             state.CurrentStep = BotStep.FilterAreaMax;
             state.PendingInput = "area_max";
             await _userStateService.SetStateAsync(userId, state, cancellationToken);
@@ -290,11 +291,11 @@ public sealed class FilterWorkflowService : IFilterWorkflowService
 
         if (text != "/skip" && TryParseArea(text, out var area) && area <= 1000)
         {
-            state.CurrentFilters.AreaMax = area;
+            state.GetCurrentFilters().AreaMax = area;
         }
 
         await _userStateService.SetStateAsync(userId, state, cancellationToken);
-        await SendFilterMenuAsync(botClient, userId, 0, state.CurrentFilters, cancellationToken);
+        await SendFilterMenuAsync(botClient, userId, 0, state.GetCurrentFilters(), cancellationToken);
     }
 
     private async Task HandleFinishingFilterAsync(
@@ -319,9 +320,9 @@ public sealed class FilterWorkflowService : IFilterWorkflowService
                 return;
             }
 
-            state.CurrentFilters.Finishing = null;
+            state.GetCurrentFilters().Finishing = null;
             await _userStateService.SetStateAsync(userId, state, cancellationToken);
-            await SendFilterMenuAsync(botClient, userId, messageId, state.CurrentFilters, cancellationToken);
+            await SendFilterMenuAsync(botClient, userId, messageId, state.GetCurrentFilters(), cancellationToken);
             return;
         }
 
@@ -330,7 +331,7 @@ public sealed class FilterWorkflowService : IFilterWorkflowService
             value = "Вайт бокс";
         }
 
-        state.CurrentFilters.Finishing = value switch
+        state.GetCurrentFilters().Finishing = value switch
         {
             "Чистовая" => FinishingType.Чистовая,
             "Вайт бокс" => FinishingType.ВайтБокс,
@@ -339,7 +340,7 @@ public sealed class FilterWorkflowService : IFilterWorkflowService
         };
 
         await _userStateService.SetStateAsync(userId, state, cancellationToken);
-        await SendFilterMenuAsync(botClient, userId, messageId, state.CurrentFilters, cancellationToken);
+        await SendFilterMenuAsync(botClient, userId, messageId, state.GetCurrentFilters(), cancellationToken);
     }
 
     private async Task HandleRoomsFilterAsync(
@@ -362,9 +363,9 @@ public sealed class FilterWorkflowService : IFilterWorkflowService
             return;
         }
 
-        state.CurrentFilters.Rooms = value;
+        state.GetCurrentFilters().Rooms = value;
         await _userStateService.SetStateAsync(userId, state, cancellationToken);
-        await SendFilterMenuAsync(botClient, userId, messageId, state.CurrentFilters, cancellationToken);
+        await SendFilterMenuAsync(botClient, userId, messageId, state.GetCurrentFilters(), cancellationToken);
     }
 
     private Task SendFilterMenuAsync(

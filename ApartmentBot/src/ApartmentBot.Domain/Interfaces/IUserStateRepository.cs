@@ -37,7 +37,8 @@ public sealed class UserState
     public Guid? SelectedCityId { get; set; }
     public Guid? SelectedDistrictId { get; set; }
     public ApartmentSearchMode SearchMode { get; set; } = ApartmentSearchMode.ByDistrict;
-    public ApartmentFilters CurrentFilters { get; set; } = new();
+    public ApartmentFilters CityFilters { get; set; } = new();
+    public ApartmentFilters DistrictFilters { get; set; } = new();
     public int CurrentPage { get; set; } = 1;
     public BotStep CurrentStep { get; set; } = BotStep.Start;
     public string? PendingInput { get; set; }
@@ -55,6 +56,17 @@ public sealed class UserState
     public int? LeadContactPromptMessageId { get; set; }
     public DateTime LastActivityTime { get; set; } = DateTime.UtcNow;
     public Guid? SelectedApartmentId { get; set; }
+
+    public ApartmentFilters GetCurrentFilters()
+    {
+        return SearchMode == ApartmentSearchMode.ByCity ? CityFilters : DistrictFilters;
+    }
+
+    public void ResetAllFilters()
+    {
+        CityFilters.Reset();
+        DistrictFilters.Reset();
+    }
 }
 
 public sealed class ApartmentFilters

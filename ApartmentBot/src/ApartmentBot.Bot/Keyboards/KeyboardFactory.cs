@@ -30,6 +30,7 @@ public static class KeyboardFactory
         [
             [InlineKeyboardButton.WithCallbackData("📍 Смотреть по районам", "nav:city_mode_districts")],
             [InlineKeyboardButton.WithCallbackData("🔍 Подобрать по всему городу", "nav:city_mode_all")],
+            [InlineKeyboardButton.WithCallbackData("⚙️ Настроить фильтры", "nav:city_filters")],
             [
                 InlineKeyboardButton.WithCallbackData("🔙 Назад к городам", $"nav:back_to_cities:{cityId}"),
                 InlineKeyboardButton.WithCallbackData("🏠 В начало", "nav:back_to_start")

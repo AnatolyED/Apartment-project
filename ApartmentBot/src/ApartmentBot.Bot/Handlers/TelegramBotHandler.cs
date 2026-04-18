@@ -73,10 +73,10 @@ public sealed class TelegramBotHandler : IBotHandler
             var state = await _userStateService.GetStateAsync(userId.Value, cancellationToken);
 
             // Автосброс фильтров через 10 минут бездействия
-            if (state.CurrentFilters.HasActiveFilters &&
+            if ((state.CityFilters.HasActiveFilters || state.DistrictFilters.HasActiveFilters) &&
                 DateTime.UtcNow - state.LastActivityTime > TimeSpan.FromMinutes(10))
             {
-                state.CurrentFilters.Reset();
+                state.ResetAllFilters();
                 state.CurrentPage = 1;
                 _logger.LogInformation("Автосброс фильтров для пользователя {UserId} после 10 минут бездействия", userId.Value);
             }
@@ -205,7 +205,7 @@ public sealed class TelegramBotHandler : IBotHandler
                     botClient,
                     userId,
                     "🔍 Выберите фильтр:",
-                    replyMarkup: KeyboardFactory.CreateFilterKeyboard(state.CurrentFilters),
+                    replyMarkup: KeyboardFactory.CreateFilterKeyboard(state.GetCurrentFilters()),
                     cancellationToken: cancellationToken);
             }
             // Если мы в процессе заполнения формы консультации
@@ -321,7 +321,7 @@ public sealed class TelegramBotHandler : IBotHandler
         else if (text == "📊 Мои фильтры")
         {
             var state = await _userStateService.GetStateAsync(userId, cancellationToken);
-            var filters = state.CurrentFilters;
+            var filters = state.GetCurrentFilters();
 
             var filterText = filters.HasActiveFilters
                 ? $"📊 Активные фильтры:\n" +
@@ -431,7 +431,7 @@ public sealed class TelegramBotHandler : IBotHandler
                 state.RequestedApartmentName = null;
                 state.CurrentStep = BotStep.SelectSearchMode;
                 state.CurrentPage = 1;
-                state.CurrentFilters.Reset();
+                state.ResetAllFilters();
 
                 var city = await _cityService.GetCityByIdAsync(cityId, cancellationToken);
                 state.SelectedCityName = city?.Name;
@@ -444,6 +444,34 @@ public sealed class TelegramBotHandler : IBotHandler
                     city!,
                     callbackQuery.Message!.MessageId,
                     cancellationToken);
+                return;
+            }
+
+            if (data == "nav:city_filters")
+            {
+                state.SearchMode = ApartmentSearchMode.ByCity;
+                state.SelectedDistrictId = null;
+                state.SelectedDistrictName = null;
+                state.SelectedDistrictPhotoUrl = null;
+                state.CurrentStep = BotStep.ViewApartments;
+                state.CurrentPage = 1;
+                await _userStateService.SetStateAsync(userId, state, cancellationToken);
+
+                await _filterWorkflowService.HandleFilterCallbackAsync(
+                    botClient,
+                    userId,
+                    "filter:menu",
+                    state,
+                    callbackQuery.Message!.MessageId,
+                    () => _apartmentPresentationService.ShowApartmentListAsync(
+                        botClient,
+                        userId,
+                        state,
+                        callbackQuery.Message!.MessageId,
+                        cancellationToken),
+                    CreateStartKeyboard,
+                    cancellationToken);
+                await AnswerCallbackOnceAsync();
                 return;
             }
 
@@ -698,7 +726,7 @@ public sealed class TelegramBotHandler : IBotHandler
         state.LeadContactPromptMessageId = null;
         state.PendingInput = null;
         state.CurrentPage = 1;
-        state.CurrentFilters.Reset();
+        state.ResetAllFilters();
     }
 
     private static string FormatFinishing(FinishingType? finishing) => finishing switch
