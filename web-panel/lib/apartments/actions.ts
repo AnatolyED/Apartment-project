@@ -90,7 +90,12 @@ function buildApartmentWhereConditions(
 
     if (plusMatch) {
       const minRooms = Number.parseInt(plusMatch[1], 10);
-      conditions.push(gte(sql<number>`CAST(${apartments.rooms} AS integer)`, minRooms));
+      conditions.push(
+        gte(
+          sql<number>`CAST(NULLIF(regexp_replace(${apartments.rooms}, '\D', '', 'g'), '') AS integer)`,
+          minRooms
+        )
+      );
     } else {
       conditions.push(eq(apartments.rooms, params.rooms));
     }
