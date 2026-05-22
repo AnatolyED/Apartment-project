@@ -297,6 +297,7 @@ public sealed class ApartmentPresentationService : IApartmentPresentationService
 
         var message = _apartmentMessageFormatter.FormatApartmentMessage(apartment, districtName);
         var replyMarkup = KeyboardFactory.CreateApartmentDetailsKeyboard(
+            apartment.Id,
             _telegramSettings.Value.ManagerChatId,
             HasGalleryPhotos(apartment),
             HasLocationPhoto(apartment),
@@ -405,6 +406,7 @@ public sealed class ApartmentPresentationService : IApartmentPresentationService
             : null;
         var message = _apartmentMessageFormatter.FormatApartmentMessage(apartment, districtName);
         var replyMarkup = KeyboardFactory.CreateApartmentDetailsKeyboard(
+            apartment.Id,
             _telegramSettings.Value.ManagerChatId,
             HasGalleryPhotos(apartment),
             HasLocationPhoto(apartment),

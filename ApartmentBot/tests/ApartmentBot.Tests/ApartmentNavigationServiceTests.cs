@@ -76,7 +76,6 @@ public sealed class ApartmentNavigationServiceTests
 
         var state = new UserState
         {
-            SelectedApartmentId = apartmentId,
             RequestedApartmentName = "Квартира №5",
             SelectedApartmentSummary = "cached summary"
         };
@@ -87,6 +86,7 @@ public sealed class ApartmentNavigationServiceTests
         await service.HandleApartmentActionAsync(
             Mock.Of<ITelegramBotClient>(),
             777,
+            apartmentId,
             state,
             (name, summary) =>
             {
@@ -98,6 +98,7 @@ public sealed class ApartmentNavigationServiceTests
 
         Assert.Equal("Квартира №5", handledName);
         Assert.Equal("formatted summary", handledSummary);
+        Assert.Equal(apartmentId, state.SelectedApartmentId);
         apartmentService.Verify(x => x.GetApartmentByIdAsync(apartmentId, It.IsAny<CancellationToken>()), Times.Once);
         userStateService.Verify(x => x.SetStateAsync(777, state, It.IsAny<CancellationToken>()), Times.Once);
     }
@@ -110,19 +111,22 @@ public sealed class ApartmentNavigationServiceTests
         apartmentService.Setup(x => x.GetApartmentByIdAsync(apartmentId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(apartment);
 
+        var userStateService = new Mock<IUserStateService>();
         var service = CreateService(
-            Mock.Of<IUserStateService>(),
+            userStateService.Object,
             apartmentService.Object,
             Mock.Of<ICityService>(),
             Mock.Of<IDistrictService>(),
             Mock.Of<IApartmentMessageFormatter>());
 
         ApartmentDto? handledApartment = null;
+        var state = new UserState();
 
         await service.HandleSelectedApartmentAsync(
             Mock.Of<ITelegramBotClient>(),
             777,
-            new UserState { SelectedApartmentId = apartmentId },
+            apartmentId,
+            state,
             dto =>
             {
                 handledApartment = dto;
@@ -131,6 +135,9 @@ public sealed class ApartmentNavigationServiceTests
             CancellationToken.None);
 
         Assert.Equal(apartment, handledApartment);
+        Assert.Equal(apartmentId, state.SelectedApartmentId);
+        Assert.Equal(apartment.Name, state.RequestedApartmentName);
+        userStateService.Verify(x => x.SetStateAsync(777, state, It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]

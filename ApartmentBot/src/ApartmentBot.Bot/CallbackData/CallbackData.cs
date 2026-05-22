@@ -36,13 +36,41 @@ public static class ApartmentPhotoCallbackData
     public const string Layout = "layout";
     public const string Location = "location";
 
-    public static string ToCallbackData(string view) => $"{Prefix}{view}";
+    public static string ToCallbackData(string view, Guid apartmentId) => $"{Prefix}{view}:{apartmentId}";
 
-    public static string Parse(string data) => data.Replace(Prefix, "");
+    public static (string View, Guid ApartmentId) Parse(string data)
+    {
+        var payload = data[Prefix.Length..];
+        var parts = payload.Split(':', 2);
+        if (parts.Length != 2)
+        {
+            throw new FormatException("Apartment photo callback must include view and apartment id.");
+        }
+
+        return (parts[0], Guid.Parse(parts[1]));
+    }
 
     public static bool IsKnownView(string view) =>
         string.Equals(view, Layout, StringComparison.Ordinal) ||
         string.Equals(view, Location, StringComparison.Ordinal);
+}
+
+public static class ApartmentConsultationCallbackData
+{
+    public const string Prefix = "apt:consult:";
+
+    public static string ToCallbackData(Guid apartmentId) => $"{Prefix}{apartmentId}";
+
+    public static Guid Parse(string data) => Guid.Parse(data[Prefix.Length..]);
+}
+
+public static class ApartmentGalleryCallbackData
+{
+    public const string Prefix = "apt:gallery:";
+
+    public static string ToCallbackData(Guid apartmentId) => $"{Prefix}{apartmentId}";
+
+    public static Guid Parse(string data) => Guid.Parse(data[Prefix.Length..]);
 }
 
 public sealed class PageCallbackData

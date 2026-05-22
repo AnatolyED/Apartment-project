@@ -22,6 +22,7 @@ public interface IApartmentNavigationService
     Task HandleApartmentActionAsync(
         ITelegramBotClient botClient,
         long userId,
+        Guid apartmentId,
         UserState state,
         Func<string, string, Task> handleApartmentAsync,
         CancellationToken cancellationToken);
@@ -29,6 +30,7 @@ public interface IApartmentNavigationService
     Task HandleSelectedApartmentAsync(
         ITelegramBotClient botClient,
         long userId,
+        Guid apartmentId,
         UserState state,
         Func<ApartmentDto, Task> handleApartmentAsync,
         CancellationToken cancellationToken);
@@ -113,17 +115,12 @@ public sealed class ApartmentNavigationService : IApartmentNavigationService
     public async Task HandleApartmentActionAsync(
         ITelegramBotClient botClient,
         long userId,
+        Guid apartmentId,
         UserState state,
         Func<string, string, Task> handleApartmentAsync,
         CancellationToken cancellationToken)
     {
-        if (!state.SelectedApartmentId.HasValue)
-        {
-            await SendMessageAsync(botClient, userId, "❌ Ошибка загрузки квартиры. Попробуйте выбрать другую.", cancellationToken);
-            return;
-        }
-
-        var apartment = await _apartmentService.GetApartmentByIdAsync(state.SelectedApartmentId.Value, cancellationToken);
+        var apartment = await _apartmentService.GetApartmentByIdAsync(apartmentId, cancellationToken);
         if (apartment is null)
         {
             await SendMessageAsync(botClient, userId, "❌ Ошибка загрузки квартиры. Попробуйте выбрать другую.", cancellationToken);
@@ -132,6 +129,7 @@ public sealed class ApartmentNavigationService : IApartmentNavigationService
 
         var districtName = await ResolveDistrictNameAsync(state, apartment, cancellationToken);
         var apartmentInfo = _apartmentMessageFormatter.FormatApartmentMessage(apartment, districtName);
+        state.SelectedApartmentId = apartment.Id;
         state.RequestedApartmentName = apartment.Name;
         state.SelectedApartmentSummary = apartmentInfo;
         await _userStateService.SetStateAsync(userId, state, cancellationToken);
@@ -142,22 +140,21 @@ public sealed class ApartmentNavigationService : IApartmentNavigationService
     public async Task HandleSelectedApartmentAsync(
         ITelegramBotClient botClient,
         long userId,
+        Guid apartmentId,
         UserState state,
         Func<ApartmentDto, Task> handleApartmentAsync,
         CancellationToken cancellationToken)
     {
-        if (!state.SelectedApartmentId.HasValue)
-        {
-            await SendMessageAsync(botClient, userId, "❌ Квартира не выбрана. Откройте карточку квартиры заново.", cancellationToken);
-            return;
-        }
-
-        var apartment = await _apartmentService.GetApartmentByIdAsync(state.SelectedApartmentId.Value, cancellationToken);
+        var apartment = await _apartmentService.GetApartmentByIdAsync(apartmentId, cancellationToken);
         if (apartment is null)
         {
             await SendMessageAsync(botClient, userId, "❌ Квартира не найдена. Выберите ее из списка заново.", cancellationToken);
             return;
         }
+
+        state.SelectedApartmentId = apartment.Id;
+        state.RequestedApartmentName = apartment.Name;
+        await _userStateService.SetStateAsync(userId, state, cancellationToken);
 
         await handleApartmentAsync(apartment);
     }

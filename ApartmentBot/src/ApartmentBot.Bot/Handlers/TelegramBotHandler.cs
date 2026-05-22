@@ -512,12 +512,13 @@ public sealed class TelegramBotHandler : IBotHandler
             }
 
             // Обработка кнопки "Связаться с менеджером"
-            // "apt:contact" оставляем как alias для уже отправленных старых карточек.
-            if (data == "apt:contact" || data == "apt:consultation")
+            if (data.StartsWith(ApartmentConsultationCallbackData.Prefix, StringComparison.Ordinal))
             {
+                var apartmentId = ApartmentConsultationCallbackData.Parse(data);
                 await _apartmentNavigationService.HandleApartmentActionAsync(
                     botClient,
                     userId,
+                    apartmentId,
                     state,
                     (apartmentName, apartmentInfo) => HandleConsultationRequestAsync(botClient, userId, apartmentName, apartmentInfo, cancellationToken),
                     cancellationToken);
@@ -525,12 +526,14 @@ public sealed class TelegramBotHandler : IBotHandler
                 return;
             }
 
-            if (data == "apt:gallery")
+            if (data.StartsWith(ApartmentGalleryCallbackData.Prefix, StringComparison.Ordinal))
             {
+                var apartmentId = ApartmentGalleryCallbackData.Parse(data);
                 await AnswerCallbackOnceAsync();
                 await _apartmentNavigationService.HandleSelectedApartmentAsync(
                     botClient,
                     userId,
+                    apartmentId,
                     state,
                     apartment => _apartmentPresentationService.ShowApartmentGalleryAsync(
                         botClient,
@@ -541,20 +544,21 @@ public sealed class TelegramBotHandler : IBotHandler
                 return;
             }
 
-            if (data.StartsWith(ApartmentPhotoCallbackData.Prefix))
+            if (data.StartsWith(ApartmentPhotoCallbackData.Prefix, StringComparison.Ordinal))
             {
-                var photoView = ApartmentPhotoCallbackData.Parse(data);
+                var photoCallback = ApartmentPhotoCallbackData.Parse(data);
                 await AnswerCallbackOnceAsync();
                 await _apartmentNavigationService.HandleSelectedApartmentAsync(
                     botClient,
                     userId,
+                    photoCallback.ApartmentId,
                     state,
                     apartment => _apartmentPresentationService.SwitchApartmentPhotoAsync(
                         botClient,
                         userId,
                         apartment,
                         callbackQuery.Message!.MessageId,
-                        photoView,
+                        photoCallback.View,
                         cancellationToken),
                     cancellationToken);
                 return;
