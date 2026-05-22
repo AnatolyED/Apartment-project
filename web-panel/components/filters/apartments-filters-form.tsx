@@ -5,7 +5,7 @@
 
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useMemo, useState } from 'react';
 import { Filter, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -26,7 +26,7 @@ interface ApartmentsFiltersFormProps {
   };
 }
 
-const ROOM_OPTIONS = ['1', '1+', '2', '2+', '3', '3+', '4+', 'студия'];
+const ROOM_OPTIONS = ['1', '1+', '2', '2+', '3', '3+', '4+', 'Студия'];
 
 export function ApartmentsFiltersForm({
   cities,
@@ -34,20 +34,13 @@ export function ApartmentsFiltersForm({
   currentParams,
 }: ApartmentsFiltersFormProps) {
   const [selectedCity, setSelectedCity] = useState(currentParams.cityId || 'all');
-  const [filteredDistricts, setFilteredDistricts] = useState(
-    selectedCity && selectedCity !== 'all'
-      ? districts.filter((d) => d.cityId === selectedCity)
-      : districts
+  const filteredDistricts = useMemo(
+    () =>
+      selectedCity && selectedCity !== 'all'
+        ? districts.filter((d) => d.cityId === selectedCity)
+        : districts,
+    [selectedCity, districts]
   );
-
-  // Обновляем список районов при изменении города
-  useEffect(() => {
-    if (selectedCity && selectedCity !== 'all') {
-      setFilteredDistricts(districts.filter((d) => d.cityId === selectedCity));
-    } else {
-      setFilteredDistricts(districts);
-    }
-  }, [selectedCity, districts]);
 
   const hasActiveFilters =
     (currentParams.cityId && currentParams.cityId !== 'all') ||
@@ -61,9 +54,6 @@ export function ApartmentsFiltersForm({
 
   return (
     <form
-      ref={(form) => {
-        // Сохраняем ссылку на форму для доступа к элементам
-      }}
       className="space-y-4 p-6 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl border border-blue-100"
       onSubmit={(e) => {
         e.preventDefault();
@@ -93,18 +83,18 @@ export function ApartmentsFiltersForm({
       }}
       onChange={(e) => {
         const form = e.currentTarget;
-        // Обработка изменения города для динамической фильтрации районов
+        // Обработка изменения города для динамической фильтрации районов.
         if (e.target instanceof HTMLSelectElement && e.target.name === 'cityId') {
           setSelectedCity(e.target.value);
         }
-        // Обработка изменения района - автоматически выставляем город
+        // Обработка изменения района: автоматически выставляем город.
         if (e.target instanceof HTMLSelectElement && e.target.name === 'districtId') {
           const selectedDistrictId = e.target.value;
           if (selectedDistrictId && selectedDistrictId !== 'all') {
             const selectedDistrict = districts.find((d) => d.id === selectedDistrictId);
             if (selectedDistrict?.cityId) {
               setSelectedCity(selectedDistrict.cityId);
-              // Находим select города и устанавливаем значение
+              // Находим select города и устанавливаем значение.
               const citySelect = form.querySelector('select[name="cityId"]') as HTMLSelectElement;
               if (citySelect) {
                 citySelect.value = selectedDistrict.cityId;

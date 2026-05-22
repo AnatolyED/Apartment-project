@@ -17,7 +17,7 @@
  */
 
 import { mkdir, writeFile, unlink, access, readdir } from 'fs/promises';
-import { join, dirname } from 'path';
+import { join, dirname, resolve, relative, sep } from 'path';
 import sharp from 'sharp';
 
 // ============================================
@@ -37,7 +37,7 @@ const TELEGRAM_MAX_DIMENSION = 1280;
 const TELEGRAM_JPEG_QUALITY = 75;
 
 // Разрешённые MIME-типы изображений
-const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 
 // ============================================
 // Интерфейсы
@@ -81,7 +81,8 @@ export async function getEntityDir(params: GetEntityDirParams): Promise<string> 
 
   // Формирование полного пути к директории сущности
   // join() корректно обрабатывает разделители путей для текущей ОС
-  const entityDir = join(UPLOADS_BASE_DIR, entityType, entityId);
+  const entityDir = resolve(UPLOADS_BASE_DIR, entityType, entityId);
+  ensurePathInsideUploads(entityDir);
 
   // ============================================
   // КРИТИЧЕСКИ ВАЖНО: Создание директории
@@ -143,15 +144,22 @@ export async function saveFileToEntityDir(
   // Формирование полного пути к файлу
   // join() гарантирует корректные разделители для ОС
   // ============================================
-  const fullPath = join(entityDir, fileName);
+  const normalizedImage = await normalizeImage(fileData);
+  const safeBaseName = fileName
+    .replace(/\.[^.]+$/, '')
+    .replace(/[^a-zA-Z0-9._-]/g, '-')
+    .slice(0, 80) || `photo-${Date.now()}`;
+  const normalizedFileName = `${safeBaseName}.${normalizedImage.extension}`;
+  const fullPath = resolve(entityDir, normalizedFileName);
+  ensurePathInsideUploads(fullPath);
 
   // ============================================
   // Запись файла на диск
   // writeFile создаёт файл по указанному пути
   // Если файл существует — он будет перезаписан
   // ============================================
-  await writeFile(fullPath, fileData);
-  await saveTelegramReadyVariant(fullPath, fileData, fileName);
+  await writeFile(fullPath, normalizedImage.buffer);
+  await saveTelegramReadyVariant(fullPath, normalizedImage.buffer, normalizedFileName);
 
   // ============================================
   // Возврат относительного пути
@@ -219,7 +227,8 @@ async function saveTelegramReadyVariant(
 export async function deleteFile(relativePath: string): Promise<void> {
   // Формирование полного пути к файлу
   // relativePath имеет вид /uploads/..., добавляем public/
-  const fullPath = join(process.cwd(), 'public', relativePath);
+  const fullPath = resolve(process.cwd(), 'public', relativePath.replace(/^\/+/, ''));
+  ensurePathInsideUploads(fullPath);
   const telegramReadyPath = getTelegramReadyPath(fullPath);
 
   try {
@@ -308,6 +317,16 @@ export async function validateFile(file: File): Promise<{ valid: boolean; error?
     };
   }
 
+  try {
+    const buffer = Buffer.from(await file.arrayBuffer());
+    await normalizeImage(buffer);
+  } catch {
+    return {
+      valid: false,
+      error: 'Файл не является корректным изображением',
+    };
+  }
+
   return { valid: true };
 }
 
@@ -321,10 +340,10 @@ export async function validateFile(file: File): Promise<{ valid: boolean; error?
  * @returns Уникальное имя файла
  */
 export function generateUniqueFileName(originalName: string): string {
-  const ext = originalName.split('.').pop() || 'jpg';
   const timestamp = Date.now();
   const random = Math.random().toString(36).substring(2, 8);
-  return `photo-${timestamp}-${random}.${ext}`;
+  const originalBaseName = originalName.replace(/\.[^.]+$/, '').replace(/[^a-zA-Z0-9._-]/g, '-');
+  return `${originalBaseName || 'photo'}-${timestamp}-${random}.jpg`;
 }
 
 function getTelegramReadyPath(fullPath: string): string | null {
@@ -334,4 +353,49 @@ function getTelegramReadyPath(fullPath: string): string | null {
   }
 
   return `${fullPath.slice(0, extensionIndex)}-telegram.jpg`;
+}
+
+function ensurePathInsideUploads(candidatePath: string) {
+  const uploadsRoot = resolve(UPLOADS_BASE_DIR);
+  const resolvedCandidate = resolve(candidatePath);
+  const relativePath = relative(uploadsRoot, resolvedCandidate);
+
+  if (
+    relativePath === '' ||
+    (!relativePath.startsWith('..') && !relativePath.includes(`..${sep}`))
+  ) {
+    return;
+  }
+
+  throw new Error('Unsafe upload path');
+}
+
+async function normalizeImage(fileData: Buffer): Promise<{ buffer: Buffer; extension: 'jpg' | 'png' | 'webp' }> {
+  const image = sharp(fileData, { failOn: 'error' });
+  const metadata = await image.metadata();
+
+  if (!metadata.width || !metadata.height) {
+    throw new Error('Invalid image');
+  }
+
+  switch (metadata.format) {
+    case 'jpeg':
+    case 'jpg':
+      return {
+        buffer: await sharp(fileData).jpeg({ quality: 90, mozjpeg: true }).toBuffer(),
+        extension: 'jpg',
+      };
+    case 'png':
+      return {
+        buffer: await sharp(fileData).png().toBuffer(),
+        extension: 'png',
+      };
+    case 'webp':
+      return {
+        buffer: await sharp(fileData).webp({ quality: 90 }).toBuffer(),
+        extension: 'webp',
+      };
+    default:
+      throw new Error('Unsupported image format');
+  }
 }

@@ -1,4 +1,4 @@
-import { desc, inArray, like, or, sql } from 'drizzle-orm';
+import { desc, inArray, like, or } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { auditLogs, type AuditLog, type UserRole } from '@/lib/db/schema';
 import { assertRole } from '@/lib/auth/session';
@@ -20,40 +20,8 @@ interface WriteAuditLogInput {
   details?: Record<string, unknown> | null;
 }
 
-let ensureAuditPromise: Promise<void> | null = null;
-
-async function ensureAuditInfrastructure() {
-  if (!ensureAuditPromise) {
-    ensureAuditPromise = (async () => {
-      await db.execute(
-        sql.raw(`
-CREATE TABLE IF NOT EXISTS audit_logs (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-  actor_user_id uuid REFERENCES users(id) ON DELETE SET NULL,
-  actor_login varchar(100) NOT NULL,
-  actor_role user_role NOT NULL,
-  action varchar(100) NOT NULL,
-  entity_type varchar(100) NOT NULL,
-  entity_id varchar(100),
-  entity_label text,
-  details jsonb,
-  created_at timestamp with time zone NOT NULL DEFAULT now()
-);
-`)
-      );
-    })().catch((error) => {
-      ensureAuditPromise = null;
-      throw error;
-    });
-  }
-
-  await ensureAuditPromise;
-}
-
 export async function writeAuditLog(input: WriteAuditLogInput) {
   try {
-    await ensureAuditInfrastructure();
-
     await db.insert(auditLogs).values({
       actorUserId: input.actorUserId ?? null,
       actorLogin: input.actorLogin,
@@ -72,7 +40,6 @@ export async function writeAuditLog(input: WriteAuditLogInput) {
 export async function getAuditLogsAction(limit = 100): Promise<AuditLogResult> {
   try {
     await assertRole(['admin']);
-    await ensureAuditInfrastructure();
 
     const safeLimit = Math.min(Math.max(limit, 1), 200);
     const logs = await db
@@ -97,7 +64,6 @@ export async function getAuditLogsAction(limit = 100): Promise<AuditLogResult> {
 export async function getSecurityLogsAction(limit = 100): Promise<AuditLogResult> {
   try {
     await assertRole(['admin']);
-    await ensureAuditInfrastructure();
 
     const safeLimit = Math.min(Math.max(limit, 1), 200);
     const logs = await db

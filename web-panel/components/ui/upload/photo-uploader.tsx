@@ -13,6 +13,7 @@
 'use client';
 
 import { useState, useRef, useCallback } from 'react';
+import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -267,8 +268,17 @@ export function PhotoUploader({
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
           onClick={() => fileInputRef.current?.click()}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+              event.preventDefault();
+              fileInputRef.current?.click();
+            }
+          }}
+          role="button"
+          tabIndex={0}
+          aria-label="Выбрать фотографии"
         >
-          <Upload className="w-10 h-10 mx-auto text-gray-400 mb-2" />
+          <Upload className="w-10 h-10 mx-auto text-gray-400 mb-2" aria-hidden="true" />
           <p className="text-sm text-gray-600">
             Перетащите фото сюда или кликните для выбора
           </p>
@@ -300,13 +310,16 @@ export function PhotoUploader({
               `}
             >
               {/* Изображение */}
-              <img
+              <Image
                 src={
                   typeof photo.src === 'string'
                     ? photo.src
                     : URL.createObjectURL(photo.src)
                 }
                 alt={photo.name}
+                width={240}
+                height={240}
+                unoptimized
                 className="w-full h-full object-cover"
                 onLoad={(e) => {
                   // Освобождение памяти после загрузки
@@ -325,18 +338,19 @@ export function PhotoUploader({
 
               {/* Иконка для перетаскивания */}
               <div className="absolute top-1 right-1 p-1 bg-black/50 rounded cursor-move opacity-0 group-hover:opacity-100 transition-opacity">
-                <GripVertical className="w-4 h-4 text-white" />
+                <GripVertical className="w-4 h-4 text-white" aria-hidden="true" />
               </div>
 
               {/* Кнопка удаления */}
               <button
                 type="button"
                 onClick={() => handleRemovePhoto(index)}
+                aria-label={`Удалить ${photo.name}`}
                 className="absolute bottom-1 right-1 p-1 bg-red-500 rounded-full
                          text-white opacity-0 group-hover:opacity-100
                          transition-opacity hover:bg-red-600"
               >
-                <X className="w-3 h-3" />
+                <X className="w-3 h-3" aria-hidden="true" />
               </button>
 
               {/* Индикатор существующего фото */}

@@ -41,20 +41,7 @@ public sealed class WebPanelDistrictRepository : IDistrictRepository
 
     public async Task<District?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        var cities = await _apiClient.GetCitiesAsync(cancellationToken);
-
-        foreach (var city in cities)
-        {
-            var districts = await _apiClient.GetDistrictsByCityIdAsync(city.Id, cancellationToken);
-
-            var district = districts.FirstOrDefault(d => d.Id == id);
-            if (district is not null)
-            {
-                return district;
-            }
-        }
-
-        return null;
+        return await _apiClient.GetDistrictByIdAsync(id, cancellationToken);
     }
 }
 

@@ -8,6 +8,7 @@ import {
   ShieldAlert,
   Building2,
   ChevronRight,
+  FileUp,
   Home,
   Landmark,
   LayoutDashboard,
@@ -54,6 +55,14 @@ function buildNavigation(role: SessionData['role']) {
       color: 'text-indigo-600',
       bg: 'bg-indigo-50',
       border: 'border-indigo-200',
+    },
+    {
+      title: 'Импорт PDF',
+      href: '/dashboard/apartments/import',
+      icon: FileUp,
+      color: 'text-sky-600',
+      bg: 'bg-sky-50',
+      border: 'border-sky-200',
     },
   ];
 
@@ -103,7 +112,7 @@ function Sidebar({ session }: { session: SessionData }) {
   const navigation = buildNavigation(session.role);
 
   return (
-    <aside className="fixed inset-y-0 left-0 z-50 w-72 bg-gradient-to-b from-slate-900 to-slate-800 shadow-2xl">
+    <aside className="fixed inset-y-0 left-0 z-50 hidden w-72 bg-slate-900 shadow-xl lg:block">
       <div className="flex h-full flex-col">
         <div className="flex h-20 items-center gap-3 border-b border-slate-700/50 px-6">
           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 shadow-lg">
@@ -120,7 +129,17 @@ function Sidebar({ session }: { session: SessionData }) {
             Навигация
           </p>
           {navigation.map((item) => {
-            const isActive = pathname === item.href;
+            const hasMoreSpecificActiveItem = navigation.some(
+              (otherItem) =>
+                otherItem.href !== item.href &&
+                otherItem.href.startsWith(`${item.href}/`) &&
+                (pathname === otherItem.href || pathname.startsWith(`${otherItem.href}/`))
+            );
+            const isActive =
+              pathname === item.href ||
+              (item.href !== '/dashboard' &&
+                pathname.startsWith(`${item.href}/`) &&
+                !hasMoreSpecificActiveItem);
             const Icon = item.icon;
 
             return (
@@ -162,6 +181,39 @@ function Sidebar({ session }: { session: SessionData }) {
   );
 }
 
+function MobileNav({ session }: { session: SessionData }) {
+  const pathname = usePathname();
+  const navigation = buildNavigation(session.role);
+
+  return (
+    <nav className="border-b border-gray-200 bg-white lg:hidden">
+      <div className="flex gap-2 overflow-x-auto px-4 py-3">
+        {navigation.map((item) => {
+          const Icon = item.icon;
+          const isActive =
+            pathname === item.href ||
+            (item.href !== '/dashboard' && pathname.startsWith(`${item.href}/`));
+
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={`flex shrink-0 items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium ${
+                isActive
+                  ? 'border-blue-200 bg-blue-50 text-blue-700'
+                  : 'border-gray-200 bg-white text-gray-700'
+              }`}
+            >
+              <Icon className="h-4 w-4" aria-hidden="true" />
+              {item.title}
+            </Link>
+          );
+        })}
+      </div>
+    </nav>
+  );
+}
+
 function Header({ session }: { session: SessionData }) {
   const pathname = usePathname();
   const date = new Date().toLocaleDateString('ru-RU', {
@@ -176,6 +228,8 @@ function Header({ session }: { session: SessionData }) {
     '/dashboard/cities': 'Города',
     '/dashboard/districts': 'Районы',
     '/dashboard/apartments': 'Объекты недвижимости',
+    '/dashboard/apartments/import': 'Импорт квартир из PDF',
+    '/dashboard/apartments/import/history': 'История PDF-импортов',
     '/dashboard/users': 'Пользователи',
     '/dashboard/audit': 'Журнал действий',
     '/dashboard/security': 'События безопасности',
@@ -190,14 +244,14 @@ function Header({ session }: { session: SessionData }) {
       : 'Управление каталогом недвижимости';
 
   return (
-    <header className="sticky top-0 z-40 border-b border-gray-200 bg-white/80 backdrop-blur-xl">
-      <div className="flex h-20 items-center justify-between px-8">
+    <header className="sticky top-0 z-40 border-b border-gray-200 bg-white/90 backdrop-blur-xl">
+      <div className="flex min-h-16 flex-col items-start justify-between gap-3 px-4 py-3 sm:flex-row sm:items-center lg:px-8">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-gray-900">{title}</h1>
+          <h1 className="text-xl font-bold tracking-tight text-gray-900 sm:text-2xl">{title}</h1>
           <p className="mt-1 text-sm text-gray-500">{date}</p>
         </div>
 
-        <div className="flex items-center gap-3 rounded-full border border-blue-100 bg-gradient-to-r from-blue-50 to-indigo-50 px-4 py-2">
+        <div className="flex max-w-full items-center gap-3 rounded-full border border-blue-100 bg-blue-50 px-4 py-2">
           <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 text-sm font-semibold text-white shadow-md">
             {session.login[0]?.toUpperCase() || 'U'}
           </div>
@@ -207,7 +261,7 @@ function Header({ session }: { session: SessionData }) {
               <ShieldCheck className="h-3 w-3" />
               <span>{roleLabel}</span>
               <span>•</span>
-              <span>{roleDescription}</span>
+              <span className="hidden sm:inline">{roleDescription}</span>
             </div>
           </div>
         </div>
@@ -224,11 +278,12 @@ export function DashboardShell({
   children: ReactNode;
 }) {
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-gray-100 to-gray-50">
+    <div className="min-h-screen bg-gray-50">
       <Sidebar session={session} />
-      <main className="pl-72">
+      <main className="lg:pl-72">
         <Header session={session} />
-        <div className="p-8">{children}</div>
+        <MobileNav session={session} />
+        <div className="p-4 sm:p-6 lg:p-8">{children}</div>
       </main>
     </div>
   );

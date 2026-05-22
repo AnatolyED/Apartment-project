@@ -6,7 +6,7 @@
 'use server';
 
 import { z } from 'zod';
-import { eq, and, desc } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { revalidatePath } from 'next/cache';
 import { db } from '@/lib/db';
 import { apartments, districts, type District, type NewDistrict } from '@/lib/db/schema';
@@ -24,6 +24,7 @@ import {
 } from '@/lib/storage';
 import { assertRole } from '@/lib/auth/session';
 import { writeAuditLog } from '@/lib/audit/actions';
+import { findDistrictById, listDistricts, type DistrictsQueryParams } from '@/lib/districts/queries';
 
 // ============================================
 // Типы результатов
@@ -40,10 +41,6 @@ interface DistrictsListResult {
   districts?: District[];
   total?: number;
   error?: string;
-}
-
-interface DistrictsQueryParams {
-  cityId?: string;
 }
 
 // ============================================
@@ -218,51 +215,34 @@ export async function getDistrictsAction(
   params: DistrictsQueryParams = {}
 ): Promise<DistrictsListResult> {
   try {
-    const conditions = [eq(districts.isActive, true)];
-
-    if (params.cityId) {
-      conditions.push(eq(districts.cityId, params.cityId));
-    }
-
-    const result = await db
-      .select()
-      .from(districts)
-      .where(and(...conditions))
-      .orderBy(desc(districts.createdAt));
+    await assertRole(['admin', 'moderator']);
+    const result = await listDistricts(params);
 
     return {
       success: true,
-      districts: result,
-      total: result.length,
+      districts: result.districts,
+      total: result.total,
     };
   } catch (error) {
     console.error('Get districts error:', error);
     return {
       success: false,
-      error: 'Не удалось загрузить список районов',
+      error: '?? ??????? ????????? ?????? ???????',
     };
   }
 }
 
-/**
- * Получение одного района по ID
- */
 export async function getDistrictByIdAction(
   id: string
 ): Promise<DistrictResult> {
   try {
-    const result = await db
-      .select()
-      .from(districts)
-      .where(and(eq(districts.id, id), eq(districts.isActive, true)))
-      .limit(1);
-
-    const district = result[0];
+    await assertRole(['admin', 'moderator']);
+    const district = await findDistrictById(id);
 
     if (!district) {
       return {
         success: false,
-        error: 'Район не найден',
+        error: '????? ?? ??????',
       };
     }
 
@@ -274,7 +254,7 @@ export async function getDistrictByIdAction(
     console.error('Get district by ID error:', error);
     return {
       success: false,
-      error: 'Не удалось загрузить район',
+      error: '?? ??????? ????????? ?????',
     };
   }
 }
@@ -309,8 +289,6 @@ export async function updateDistrictAction(
     const rawData = Object.fromEntries(formData.entries());
 
     // Обработка URL удалённых фото (физическое удаление файлов)
-    const deletedPhotoUrls = formData.getAll('deletedPhotoUrls') as string[];
-    
     // Удаляем файлы с диска
     delete rawData.photos;
     delete rawData.deletedPhotoUrls;
@@ -320,8 +298,16 @@ export async function updateDistrictAction(
     // ============================================
     // Шаг 3: Формирование нового массива фото
     // ============================================
-    const currentPhotos = formData.getAll('currentPhotos') as string[];
-    const photoPaths = [...currentPhotos];
+    const existingPhotos = existing.district.photos ?? [];
+    const existingPhotoSet = new Set(existingPhotos);
+    const currentPhotos = (formData.getAll('currentPhotos') as string[]).filter((path) =>
+      existingPhotoSet.has(path)
+    );
+    const deletedPhotoUrls = (formData.getAll('deletedPhotoUrls') as string[]).filter((path) =>
+      existingPhotoSet.has(path)
+    );
+    const deletedPhotoSet = new Set(deletedPhotoUrls);
+    const photoPaths = currentPhotos.filter((path) => !deletedPhotoSet.has(path));
 
     // ============================================
     // Шаг 4: Обработка новых файлов

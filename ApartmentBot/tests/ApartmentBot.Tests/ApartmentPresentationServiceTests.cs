@@ -74,13 +74,17 @@ public sealed class ApartmentPresentationServiceTests
         var apartmentService = new Mock<IApartmentService>();
         var districtService = new Mock<IDistrictService>();
         var districtId = Guid.Parse("11111111-1111-1111-1111-111111111111");
+        var cityId = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
+
+        districtService.Setup(x => x.GetDistrictsByCityIdAsync(cityId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
 
         apartmentService.Setup(x => x.GetApartmentsAsync(
                 districtId,
                 null,
                 null,
                 1,
-                20,
+                5,
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ApartmentListDto([], 0, 0, 1));
 
@@ -89,7 +93,7 @@ public sealed class ApartmentPresentationServiceTests
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(new DistrictDto(
                 districtId,
-                Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
+                cityId,
                 "Тестовый район",
                 null,
                 [],
@@ -113,6 +117,7 @@ public sealed class ApartmentPresentationServiceTests
             777,
             new UserState
             {
+                SelectedCityId = cityId,
                 SelectedDistrictId = districtId,
                 CurrentPage = 1
             },
@@ -133,14 +138,18 @@ public sealed class ApartmentPresentationServiceTests
         var apartmentService = new Mock<IApartmentService>();
         var districtService = new Mock<IDistrictService>();
         var districtId = Guid.Parse("11111111-1111-1111-1111-111111111111");
+        var cityId = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
         const string districtPhoto = "/uploads/districts/test/photo.jpg";
+
+        districtService.Setup(x => x.GetDistrictsByCityIdAsync(cityId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
 
         apartmentService.Setup(x => x.GetApartmentsAsync(
                 districtId,
                 null,
                 null,
                 1,
-                20,
+                5,
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ApartmentListDto(
             [
@@ -153,7 +162,7 @@ public sealed class ApartmentPresentationServiceTests
         districtService.Setup(x => x.GetDistrictByIdAsync(districtId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new DistrictDto(
                 districtId,
-                Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
+                cityId,
                 "Тестовый район",
                 null,
                 [districtPhoto],
@@ -174,6 +183,7 @@ public sealed class ApartmentPresentationServiceTests
             777,
             new UserState
             {
+                SelectedCityId = cityId,
                 SelectedDistrictId = districtId,
                 CurrentPage = 1,
                 DistrictPhotoShownForDistrictId = districtId,
@@ -362,6 +372,96 @@ public sealed class ApartmentPresentationServiceTests
     }
 
     [Fact]
+    public async Task ShowApartmentDetailsAsync_WithLocationPhoto_AddsPhotoSwitchButtons()
+    {
+        IRequest<Message>? capturedRequest = null;
+        var botClient = CreateBotClientMock(request => capturedRequest = request);
+        var mediaService = new Mock<ITelegramMediaService>(MockBehavior.Strict);
+        mediaService.Setup(x => x.BuildWebPanelFileUrl("/uploads/layout.jpg"))
+            .Returns("http://localhost:3000/uploads/layout.jpg");
+        mediaService.Setup(x => x.LoadPhotoAsInputFileAsync(
+                "/uploads/layout.jpg",
+                "http://localhost:3000/uploads/layout.jpg",
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Telegram.Bot.Types.InputFile.FromStream(new MemoryStream([1, 2, 3]), "layout.jpg"));
+
+        var service = CreateService(
+            Mock.Of<IApartmentService>(),
+            Mock.Of<IDistrictService>(),
+            CreateUserStateServiceMock().Object,
+            new ApartmentMessageFormatter(),
+            mediaService.Object,
+            managerChatId: null);
+
+        await service.ShowApartmentDetailsAsync(
+            botClient.Object,
+            777,
+            CreateApartment(
+                "Студия",
+                22.8m,
+                3_997_000m,
+                ["/uploads/layout.jpg", "/uploads/location-1.jpg"]),
+            41,
+            CancellationToken.None);
+
+        Assert.NotNull(capturedRequest);
+        Assert.Equal("SendPhotoRequest", capturedRequest!.GetType().Name);
+        var buttons = GetReplyMarkupButtonTexts(capturedRequest);
+        Assert.Contains("Планировка", buttons);
+        Assert.Contains("Геолокация", buttons);
+        Assert.DoesNotContain("Показать все фото", buttons);
+    }
+
+    [Fact]
+    public async Task SwitchApartmentPhotoAsync_ToLocation_EditsCurrentMessageMedia()
+    {
+        IRequest<Message>? capturedRequest = null;
+        UserState? savedState = null;
+        var botClient = CreateBotClientMock(request => capturedRequest = request);
+        var mediaService = new Mock<ITelegramMediaService>(MockBehavior.Strict);
+        var userStateService = CreateUserStateServiceMock(new UserState
+        {
+            ApartmentPhotoShownForApartmentId = Guid.Parse("031cd3a3-01d6-45f8-b33c-453b7b0e36f1"),
+            ApartmentPhotoShownForPhotoUrl = "/uploads/layout.jpg"
+        });
+        userStateService.Setup(x => x.SetStateAsync(It.IsAny<long>(), It.IsAny<UserState>(), It.IsAny<CancellationToken>()))
+            .Callback<long, UserState, CancellationToken>((_, state, _) => savedState = state)
+            .Returns(Task.CompletedTask);
+        mediaService.Setup(x => x.BuildWebPanelFileUrl("/uploads/location-1.jpg"))
+            .Returns("http://localhost:3000/uploads/location-1.jpg");
+        mediaService.Setup(x => x.LoadPhotoAsInputFileAsync(
+                "/uploads/location-1.jpg",
+                "http://localhost:3000/uploads/location-1.jpg",
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Telegram.Bot.Types.InputFile.FromStream(new MemoryStream([1, 2, 3]), "location.jpg"));
+
+        var service = CreateService(
+            Mock.Of<IApartmentService>(),
+            Mock.Of<IDistrictService>(),
+            userStateService.Object,
+            new ApartmentMessageFormatter(),
+            mediaService.Object,
+            managerChatId: null);
+
+        await service.SwitchApartmentPhotoAsync(
+            botClient.Object,
+            777,
+            CreateApartment(
+                "Студия",
+                22.8m,
+                3_997_000m,
+                ["/uploads/layout.jpg", "/uploads/location-1.jpg"]),
+            41,
+            "location",
+            CancellationToken.None);
+
+        Assert.NotNull(capturedRequest);
+        Assert.Equal("EditMessageMediaRequest", capturedRequest!.GetType().Name);
+        Assert.Equal("/uploads/location-1.jpg", savedState?.ApartmentPhotoShownForPhotoUrl);
+        Assert.Contains("Геолокация", GetReplyMarkupButtonTexts(capturedRequest));
+    }
+
+    [Fact]
     public async Task ShowApartmentGalleryAsync_WithSeveralPhotos_SendsMediaGroup()
     {
         var botClient = new Mock<ITelegramBotClient>();
@@ -391,7 +491,7 @@ public sealed class ApartmentPresentationServiceTests
                 "Квартира №9",
                 72m,
                 21_000_000m,
-                ["/uploads/a.jpg", "/uploads/b.jpg"]),
+                ["/uploads/layout.jpg", "/uploads/location-1.jpg", "/uploads/gallery.jpg"]),
             CancellationToken.None);
 
         mediaService.Verify(

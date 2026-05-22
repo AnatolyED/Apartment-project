@@ -1,7 +1,8 @@
 import { Suspense } from 'react';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { Home } from 'lucide-react';
+import { ChevronLeft, ChevronRight, FileUp, Home } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { DeleteEntityButton } from '@/components/ui/delete-entity-button';
 import { DataTable } from '@/components/ui/data-table';
 import { PageHeader } from '@/components/ui/page-header';
@@ -69,6 +70,45 @@ function SortLink({
       {children}
       {isActive && <span className="text-xs">{order === 'asc' ? '▲' : '▼'}</span>}
     </Link>
+  );
+}
+
+function buildPageHref(
+  params: Record<string, string | string[] | undefined>,
+  page: number
+) {
+  const currentParams = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value && key !== 'page') {
+      currentParams.set(key, Array.isArray(value) ? value[0] : String(value));
+    }
+  });
+  currentParams.set('page', String(page));
+
+  return `/dashboard/apartments?${currentParams.toString()}`;
+}
+
+function PaginationLink({
+  disabled,
+  href,
+  children,
+}: {
+  disabled: boolean;
+  href: string;
+  children: React.ReactNode;
+}) {
+  if (disabled) {
+    return (
+      <Button variant="outline" size="sm" disabled>
+        {children}
+      </Button>
+    );
+  }
+
+  return (
+    <Button variant="outline" size="sm" asChild>
+      <Link href={href}>{children}</Link>
+    </Button>
   );
 }
 
@@ -211,14 +251,28 @@ async function ApartmentsTable({
       />
 
       {totalPages > 1 && (
-        <div className="flex items-center justify-between rounded-xl border border-gray-200 bg-white px-4 py-4 shadow-sm">
+        <div className="flex flex-col gap-3 rounded-xl border border-gray-200 bg-white px-4 py-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
           <div className="text-sm text-gray-500">
             Показано {(page - 1) * limit + 1}-{Math.min(page * limit, total)} из {total}
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <PaginationLink
+              disabled={page <= 1}
+              href={buildPageHref(params, Math.max(1, page - 1))}
+            >
+              <ChevronLeft className="h-4 w-4" aria-hidden="true" />
+              Назад
+            </PaginationLink>
             <span className="text-sm text-gray-600">
               Страница {page} из {totalPages}
             </span>
+            <PaginationLink
+              disabled={page >= totalPages}
+              href={buildPageHref(params, Math.min(totalPages, page + 1))}
+            >
+              Вперёд
+              <ChevronRight className="h-4 w-4" aria-hidden="true" />
+            </PaginationLink>
           </div>
         </div>
       )}
@@ -240,6 +294,14 @@ export default async function ApartmentsPage({ searchParams }: ApartmentsPagePro
           href: '/dashboard/apartments/new',
           text: 'Добавить квартиру',
         }}
+        actions={
+          <Button variant="outline" asChild>
+            <Link href="/dashboard/apartments/import">
+              <FileUp className="h-4 w-4" />
+              Импорт PDF
+            </Link>
+          </Button>
+        }
         icon={<Home className="h-6 w-6 text-white" />}
       />
 

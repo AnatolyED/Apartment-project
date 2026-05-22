@@ -4,7 +4,7 @@
 
 'use client';
 
-import { useState, useActionState } from 'react';
+import { useActionState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { createCityAction } from '@/lib/cities/actions';
 import { Button } from '@/components/ui/button';
@@ -22,13 +22,13 @@ export default function NewCityPage() {
   const router = useRouter();
 
   // Ref для формы
-  const formRef = useActionStateRef();
+  const formRef = useRef<HTMLFormElement>(null);
 
   // useActionState для работы с Server Action
   const [state, formAction, isPending] = useActionState<
     { success: boolean; error?: string },
     FormData
-  >(async (prevState, formData) => {
+  >(async (_prevState, formData) => {
     const result = await createCityAction(formData);
 
     if (result.success && result.city) {
@@ -65,7 +65,7 @@ export default function NewCityPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <form ref={formRef as any} action={formAction} className="space-y-6">
+          <form ref={formRef} action={formAction} className="space-y-6">
             {/* Название */}
             <div className="space-y-2">
               <Label htmlFor="name">Название города</Label>
@@ -113,12 +113,4 @@ export default function NewCityPage() {
       </Card>
     </div>
   );
-}
-
-// Хук для получения ref формы
-function useActionStateRef() {
-  const [ref, setRef] = useState<HTMLFormElement | null>(null);
-  return {
-    current: ref,
-  } as any;
 }

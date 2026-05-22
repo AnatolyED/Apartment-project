@@ -57,19 +57,26 @@ public sealed class ApartmentNavigationServiceTests
     }
 
     [Fact]
-    public async Task HandleApartmentActionAsync_UsesCachedApartmentDataWithoutRefetch()
+    public async Task HandleApartmentActionAsync_LoadsSelectedApartmentAndCachesSummary()
     {
+        var apartmentId = Guid.Parse("11111111-1111-1111-1111-111111111111");
+        var apartment = CreateApartmentDto(apartmentId, "Квартира №5");
         var userStateService = new Mock<IUserStateService>();
-        var apartmentService = new Mock<IApartmentService>(MockBehavior.Strict);
+        var apartmentService = new Mock<IApartmentService>();
+        apartmentService.Setup(x => x.GetApartmentByIdAsync(apartmentId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(apartment);
+        var formatter = new Mock<IApartmentMessageFormatter>();
+        formatter.Setup(x => x.FormatApartmentMessage(apartment)).Returns("formatted summary");
         var service = CreateService(
             userStateService.Object,
             apartmentService.Object,
             Mock.Of<ICityService>(),
             Mock.Of<IDistrictService>(),
-            Mock.Of<IApartmentMessageFormatter>());
+            formatter.Object);
 
         var state = new UserState
         {
+            SelectedApartmentId = apartmentId,
             RequestedApartmentName = "Квартира №5",
             SelectedApartmentSummary = "cached summary"
         };
@@ -90,11 +97,10 @@ public sealed class ApartmentNavigationServiceTests
             CancellationToken.None);
 
         Assert.Equal("Квартира №5", handledName);
-        Assert.Equal("cached summary", handledSummary);
-        apartmentService.Verify(x => x.GetApartmentByIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
-        userStateService.Verify(x => x.SetStateAsync(It.IsAny<long>(), It.IsAny<UserState>(), It.IsAny<CancellationToken>()), Times.Never);
+        Assert.Equal("formatted summary", handledSummary);
+        apartmentService.Verify(x => x.GetApartmentByIdAsync(apartmentId, It.IsAny<CancellationToken>()), Times.Once);
+        userStateService.Verify(x => x.SetStateAsync(777, state, It.IsAny<CancellationToken>()), Times.Once);
     }
-
     [Fact]
     public async Task HandleSelectedApartmentAsync_LoadsApartmentAndInvokesHandler()
     {
@@ -140,6 +146,7 @@ public sealed class ApartmentNavigationServiceTests
 
         var state = new UserState
         {
+            SelectedCityId = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
             SelectedDistrictId = Guid.Parse("22222222-2222-2222-2222-222222222222"),
             SelectedApartmentId = Guid.Parse("33333333-3333-3333-3333-333333333333"),
             RequestedApartmentName = "Квартира №3",

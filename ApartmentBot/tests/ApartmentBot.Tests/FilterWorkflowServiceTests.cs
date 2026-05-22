@@ -42,9 +42,10 @@ public sealed class FilterWorkflowServiceTests
         var service = CreateService(userStateService.Object);
         var state = new UserState
         {
+            SelectedCityId = Guid.Parse("22222222-2222-2222-2222-222222222222"),
             SelectedDistrictId = Guid.Parse("11111111-1111-1111-1111-111111111111"),
             CurrentPage = 4,
-            CurrentFilters = new ApartmentFilters
+            DistrictFilters = new ApartmentFilters
             {
                 Finishing = FinishingType.БезОтделки,
                 Rooms = "3",
@@ -74,14 +75,14 @@ public sealed class FilterWorkflowServiceTests
 
         Assert.True(showApartmentListCalled);
         Assert.Equal(1, state.CurrentPage);
-        Assert.False(state.CurrentFilters.HasActiveFilters);
-        Assert.Null(state.CurrentFilters.Finishing);
-        Assert.Null(state.CurrentFilters.Rooms);
-        Assert.Null(state.CurrentFilters.PriceMin);
-        Assert.Null(state.CurrentFilters.PriceMax);
-        Assert.Null(state.CurrentFilters.AreaMin);
-        Assert.Null(state.CurrentFilters.AreaMax);
-        Assert.Equal("created_desc", state.CurrentFilters.Sort);
+        Assert.False(state.GetCurrentFilters().HasActiveFilters);
+        Assert.Null(state.GetCurrentFilters().Finishing);
+        Assert.Null(state.GetCurrentFilters().Rooms);
+        Assert.Null(state.GetCurrentFilters().PriceMin);
+        Assert.Null(state.GetCurrentFilters().PriceMax);
+        Assert.Null(state.GetCurrentFilters().AreaMin);
+        Assert.Null(state.GetCurrentFilters().AreaMax);
+        Assert.Equal("created_desc", state.GetCurrentFilters().Sort);
         userStateService.Verify(
             x => x.SetStateAsync(777, state, It.IsAny<CancellationToken>()),
             Times.Once);
@@ -132,7 +133,7 @@ public sealed class FilterWorkflowServiceTests
         var state = new UserState
         {
             CurrentStep = BotStep.FilterAreaMin,
-            CurrentFilters = new ApartmentFilters()
+            DistrictFilters = new ApartmentFilters()
         };
 
         await service.HandleAreaMinInputAsync(
@@ -142,7 +143,7 @@ public sealed class FilterWorkflowServiceTests
             state,
             CancellationToken.None);
 
-        Assert.Equal(57.9m, state.CurrentFilters.AreaMin);
+        Assert.Equal(57.9m, state.GetCurrentFilters().AreaMin);
         Assert.Equal(BotStep.FilterAreaMax, state.CurrentStep);
         userStateService.Verify(
             x => x.SetStateAsync(777, state, It.IsAny<CancellationToken>()),
@@ -159,7 +160,7 @@ public sealed class FilterWorkflowServiceTests
         var state = new UserState
         {
             CurrentStep = BotStep.FilterAreaMin,
-            CurrentFilters = new ApartmentFilters()
+            DistrictFilters = new ApartmentFilters()
         };
 
         await service.HandleAreaMinInputAsync(
@@ -169,7 +170,7 @@ public sealed class FilterWorkflowServiceTests
             state,
             CancellationToken.None);
 
-        Assert.Null(state.CurrentFilters.AreaMin);
+        Assert.Null(state.GetCurrentFilters().AreaMin);
         Assert.Equal(BotStep.FilterAreaMin, state.CurrentStep);
         Assert.NotNull(capturedRequest);
         Assert.Contains("Некорректное значение", GetStringProperty(capturedRequest!, "Text"));

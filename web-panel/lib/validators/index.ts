@@ -78,6 +78,11 @@ export const apartmentSchema = z.object({
     .coerce.number()
     .positive('Площадь должна быть больше 0')
     .max(1000, 'Площадь не может превышать 1000 м²'),
+  floor: z
+    .coerce.number()
+    .int('Этаж должен быть целым числом')
+    .min(-10, 'Этаж не может быть ниже -10')
+    .max(200, 'Этаж не может быть выше 200'),
   price: z.preprocess(
     normalizeIntegerMoney,
     z

@@ -29,8 +29,13 @@ public static class DependencyInjection
         {
             var config = sp.GetRequiredService<IConfiguration>();
             var baseUrl = config["WebPanel:BaseUrl"] ?? "http://localhost:3000/api";
+            var apiToken = config["WebPanel:ApiToken"];
             client.BaseAddress = new Uri(baseUrl);
             client.DefaultRequestHeaders.Add("Accept", "application/json");
+            if (!string.IsNullOrWhiteSpace(apiToken))
+            {
+                client.DefaultRequestHeaders.Add("X-Bot-Api-Token", apiToken);
+            }
         })
         .AddTransientHttpErrorPolicy(policy => policy.WaitAndRetryAsync(3, _ => TimeSpan.FromMilliseconds(500)))
         .AddTransientHttpErrorPolicy(policy => policy.CircuitBreakerAsync(5, TimeSpan.FromSeconds(30)));
@@ -38,6 +43,10 @@ public static class DependencyInjection
         services.AddSingleton<ICityRepository, WebPanelCityRepository>();
         services.AddSingleton<IDistrictRepository, WebPanelDistrictRepository>();
         services.AddSingleton<IApartmentRepository, WebPanelApartmentRepository>();
+        services.AddHttpClient("telegram-media", client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(15);
+        });
 
         return services;
     }

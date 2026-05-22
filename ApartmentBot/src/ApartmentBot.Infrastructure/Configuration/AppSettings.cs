@@ -4,6 +4,7 @@ public sealed class WebPanelSettings
 {
     public const string SectionName = "WebPanel";
     public string BaseUrl { get; init; } = "http://localhost:3000/api";
+    public string? ApiToken { get; init; }
 }
 
 public sealed class TelegramSettings

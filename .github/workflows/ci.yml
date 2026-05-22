@@ -1,0 +1,83 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - master
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  web-panel:
+    name: web-panel checks
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web-panel
+    env:
+      CI: "true"
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/build_time_placeholder
+      ADMIN_LOGIN: admin
+      ADMIN_PASSWORD: ci-admin-password
+      SESSION_SECRET: ci_session_secret_00000000000000000000000000000000
+      AUTH_LOGIN_ATTEMPTS_LIMIT: "5"
+      AUTH_LOGIN_LOCK_MINUTES: "15"
+      TRUST_FORWARDED_HEADERS: "false"
+      NEXT_PUBLIC_APP_URL: http://localhost:3000
+      BOT_DIAGNOSTICS_URL: http://localhost:8080
+      BOT_API_TOKEN: ci_bot_api_token
+      ALLOW_UNAUTHENTICATED_BOT_API: "false"
+      DIAGNOSTICS_TOKEN: ci_diagnostics_token
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24.x
+          cache: npm
+          cache-dependency-path: web-panel/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      - name: Audit dependencies
+        run: npm audit --audit-level=high
+
+  apartment-bot:
+    name: ApartmentBot tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ApartmentBot
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore
+        run: dotnet restore ApartmentBot.slnx
+
+      - name: Test
+        run: dotnet test ApartmentBot.slnx --configuration Release --no-restore --verbosity normal

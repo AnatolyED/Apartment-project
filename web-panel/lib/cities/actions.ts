@@ -6,7 +6,7 @@
 'use server';
 
 import { z } from 'zod';
-import { eq, and, desc, inArray } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import { revalidatePath } from 'next/cache';
 import { db } from '@/lib/db';
 import { apartments, cities, districts, type City, type NewCity } from '@/lib/db/schema';
@@ -21,6 +21,7 @@ import {
 } from '@/lib/storage';
 import { assertRole } from '@/lib/auth/session';
 import { writeAuditLog } from '@/lib/audit/actions';
+import { findCityById, listCities, type CitiesQueryParams } from '@/lib/cities/queries';
 
 // ============================================
 // Типы результатов
@@ -37,11 +38,6 @@ interface CitiesListResult {
   cities?: City[];
   total?: number;
   error?: string;
-}
-
-interface CitiesQueryParams {
-  isActive?: boolean;
-  limit?: number;
 }
 
 // ============================================
@@ -127,56 +123,34 @@ export async function getCitiesAction(
   params: CitiesQueryParams = {}
 ): Promise<CitiesListResult> {
   try {
-    const conditions = [];
-    const limit = params.limit && params.limit > 0 ? params.limit : undefined;
-
-    if (params.isActive !== undefined) {
-      conditions.push(eq(cities.isActive, params.isActive));
-    } else {
-      conditions.push(eq(cities.isActive, true));
-    }
-
-    const query = db
-      .select()
-      .from(cities)
-      .where(and(...conditions))
-      .orderBy(desc(cities.createdAt));
-
-    const result = limit ? await query.limit(limit) : await query;
+    await assertRole(['admin', 'moderator']);
+    const result = await listCities(params);
 
     return {
       success: true,
-      cities: result,
-      total: result.length,
+      cities: result.cities,
+      total: result.total,
     };
   } catch (error) {
     console.error('Get cities error:', error);
     return {
       success: false,
-      error: 'Не удалось загрузить список городов',
+      error: '?? ??????? ????????? ?????? ???????',
     };
   }
 }
 
-/**
- * Получение одного города по ID
- */
 export async function getCityByIdAction(
   id: string
 ): Promise<CityResult> {
   try {
-    const result = await db
-      .select()
-      .from(cities)
-      .where(and(eq(cities.id, id), eq(cities.isActive, true)))
-      .limit(1);
-
-    const city = result[0];
+    await assertRole(['admin', 'moderator']);
+    const city = await findCityById(id);
 
     if (!city) {
       return {
         success: false,
-        error: 'Город не найден',
+        error: '????? ?? ??????',
       };
     }
 
@@ -188,7 +162,7 @@ export async function getCityByIdAction(
     console.error('Get city by ID error:', error);
     return {
       success: false,
-      error: 'Не удалось загрузить город',
+      error: '?? ??????? ????????? ?????',
     };
   }
 }

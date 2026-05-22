@@ -108,7 +108,11 @@ public static class KeyboardFactory
         return new InlineKeyboardMarkup(keyboard);
     }
 
-    public static InlineKeyboardMarkup CreateApartmentDetailsKeyboard(long? managerChatId = null, bool hasGallery = false)
+    public static InlineKeyboardMarkup CreateApartmentDetailsKeyboard(
+        long? managerChatId = null,
+        bool hasGallery = false,
+        bool hasLocationPhoto = false,
+        string currentPhotoView = ApartmentPhotoCallbackData.Layout)
     {
         var keyboard = new List<List<InlineKeyboardButton>>
         {
@@ -117,6 +121,20 @@ public static class KeyboardFactory
                 InlineKeyboardButton.WithCallbackData("💬 Получить консультацию", "apt:consultation")
             }
         };
+
+        if (hasLocationPhoto)
+        {
+            var isLayout = string.Equals(currentPhotoView, ApartmentPhotoCallbackData.Layout, StringComparison.Ordinal);
+            keyboard.Add(
+            [
+                InlineKeyboardButton.WithCallbackData(
+                    isLayout ? "✓ Планировка" : "Планировка",
+                    ApartmentPhotoCallbackData.ToCallbackData(ApartmentPhotoCallbackData.Layout)),
+                InlineKeyboardButton.WithCallbackData(
+                    isLayout ? "Геолокация" : "✓ Геолокация",
+                    ApartmentPhotoCallbackData.ToCallbackData(ApartmentPhotoCallbackData.Location))
+            ]);
+        }
 
         if (hasGallery)
         {

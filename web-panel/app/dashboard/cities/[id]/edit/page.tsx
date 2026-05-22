@@ -4,7 +4,7 @@
 
 'use client';
 
-import { useState, useActionState, useEffect, useRef } from 'react';
+import { useState, useActionState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { updateCityAction, getCityByIdAction } from '@/lib/cities/actions';
 import { FormContainer, FormSection } from '@/components/ui/form-container';
@@ -23,7 +23,6 @@ export default function EditCityPage() {
 
   const [loading, setLoading] = useState(true);
   const [city, setCity] = useState<City | null>(null);
-  const formRef = useRef<HTMLFormElement>(null);
 
   // Загрузка данных города
   useEffect(() => {
@@ -46,7 +45,7 @@ export default function EditCityPage() {
   const [state, formAction, isPending] = useActionState<
     { success: boolean; error?: string },
     FormData
-  >(async (prevState, formData) => {
+  >(async (_prevState, formData) => {
     const result = await updateCityAction(cityId, formData);
 
     if (result.success && result.city) {

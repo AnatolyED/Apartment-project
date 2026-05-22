@@ -27,7 +27,7 @@ public sealed class TelegramBotHandlerTests
             SelectedApartmentId = Guid.Parse("33333333-3333-3333-3333-333333333333"),
             SelectedApartmentSummary = "summary",
             RequestedApartmentName = "Квартира №1",
-            CurrentFilters = new ApartmentFilters
+            DistrictFilters = new ApartmentFilters
             {
                 Rooms = "3",
                 PriceMin = 10_000_000m
@@ -65,7 +65,7 @@ public sealed class TelegramBotHandlerTests
         Assert.Null(state.SelectedApartmentId);
         Assert.Null(state.SelectedApartmentSummary);
         Assert.Null(state.RequestedApartmentName);
-        Assert.False(state.CurrentFilters.HasActiveFilters);
+        Assert.False(state.GetCurrentFilters().HasActiveFilters);
 
         userStateService.Verify(
             x => x.SetStateAsync(777, state, It.IsAny<CancellationToken>()),
@@ -170,7 +170,7 @@ public sealed class TelegramBotHandlerTests
     }
 
     [Fact]
-    public async Task HandleUpdateAsync_CityCallback_WhenAnswerCallbackFails_StillShowsDistricts()
+    public async Task HandleUpdateAsync_CityCallback_WhenAnswerCallbackFails_StillShowsSearchMode()
     {
         var cityId = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
         var state = new UserState();
@@ -191,31 +191,14 @@ public sealed class TelegramBotHandlerTests
                 DateTime.UtcNow,
                 DateTime.UtcNow));
 
-        var districtService = new Mock<IDistrictService>();
-        districtService.Setup(x => x.GetDistrictsByCityIdAsync(cityId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(
-            [
-                new ApartmentBot.Application.DTOs.DistrictDto(
-                    Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"),
-                    cityId,
-                    "Центральный",
-                    null,
-                    [],
-                    true,
-                    DateTime.UtcNow,
-                    DateTime.UtcNow)
-            ]);
-
         var presentationService = new Mock<IApartmentPresentationService>();
-        presentationService.Setup(x => x.ShowDistrictListAsync(
+        presentationService.Setup(x => x.ShowCitySearchModeAsync(
                 It.IsAny<ITelegramBotClient>(),
                 777,
-                It.IsAny<ApartmentBot.Application.DTOs.CityDto?>(),
-                It.IsAny<IReadOnlyList<ApartmentBot.Application.DTOs.DistrictDto>>(),
+                It.IsAny<ApartmentBot.Application.DTOs.CityDto>(),
                 15,
                 It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
-
         var botClient = new Mock<ITelegramBotClient>();
         botClient.Setup(x => x.SendRequest(
                 It.IsAny<IRequest<bool>>(),
@@ -228,7 +211,6 @@ public sealed class TelegramBotHandlerTests
 
         var handler = CreateHandler(
             cityService: cityService.Object,
-            districtService: districtService.Object,
             userStateService: userStateService.Object,
             apartmentPresentationService: presentationService.Object);
 
@@ -251,11 +233,10 @@ public sealed class TelegramBotHandlerTests
             CancellationToken.None);
 
         presentationService.Verify(
-            x => x.ShowDistrictListAsync(
+            x => x.ShowCitySearchModeAsync(
                 botClient.Object,
                 777,
-                It.Is<ApartmentBot.Application.DTOs.CityDto?>(c => c != null && c.Id == cityId),
-                It.Is<IReadOnlyList<ApartmentBot.Application.DTOs.DistrictDto>>(d => d.Count == 1),
+                It.Is<ApartmentBot.Application.DTOs.CityDto>(c => c.Id == cityId),
                 15,
                 It.IsAny<CancellationToken>()),
             Times.Once);

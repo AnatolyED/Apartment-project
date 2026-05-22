@@ -1,6 +1,7 @@
 import { relations } from 'drizzle-orm';
 import {
   boolean,
+  index,
   integer,
   jsonb,
   numeric,
@@ -21,6 +22,8 @@ export const finishingEnum = pgEnum('finishing', [
 ]);
 
 export const userRoleEnum = pgEnum('user_role', ['admin', 'moderator']);
+
+export const apartmentImportModeEnum = pgEnum('apartment_import_mode', ['rules', 'hybrid']);
 
 export const cities = pgTable('cities', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -113,6 +116,83 @@ export const auditLogs = pgTable('audit_logs', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
+export const apartmentImportBatches = pgTable(
+  'apartment_import_batches',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    actorUserId: uuid('actor_user_id').references(() => users.id, { onDelete: 'set null' }),
+    actorLogin: varchar('actor_login', { length: 100 }).notNull(),
+    actorRole: userRoleEnum('actor_role').notNull(),
+    fileName: text('file_name').notNull(),
+    fileHash: varchar('file_hash', { length: 64 }),
+    mode: apartmentImportModeEnum('mode').notNull().default('rules'),
+    parserProvider: varchar('parser_provider', { length: 100 }).notNull().default('rules'),
+    status: varchar('status', { length: 32 }).notNull(),
+    totalRows: integer('total_rows').notNull().default(0),
+    submittedRows: integer('submitted_rows').notNull().default(0),
+    importedRows: integer('imported_rows').notNull().default(0),
+    duplicateRows: integer('duplicate_rows').notNull().default(0),
+    errorRows: integer('error_rows').notNull().default(0),
+    warningRows: integer('warning_rows').notNull().default(0),
+    createdCities: text('created_cities').array().notNull().default([]),
+    createdDistricts: text('created_districts').array().notNull().default([]),
+    rollbackStatus: varchar('rollback_status', { length: 32 }).notNull().default('not_started'),
+    rolledBackAt: timestamp('rolled_back_at', { withTimezone: true }),
+    rolledBackByUserId: uuid('rolled_back_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    rolledBackByLogin: varchar('rolled_back_by_login', { length: 100 }),
+    rollbackDetails: jsonb('rollback_details'),
+    summary: jsonb('summary'),
+    details: jsonb('details'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    apartmentImportBatchesCreatedAtIdx: index('apartment_import_batches_created_at_idx').on(
+      table.createdAt
+    ),
+    apartmentImportBatchesFileHashIdx: index('apartment_import_batches_file_hash_idx').on(
+      table.fileHash
+    ),
+    apartmentImportBatchesRollbackStatusIdx: index(
+      'apartment_import_batches_rollback_status_idx'
+    ).on(table.rollbackStatus),
+  })
+);
+
+export const apartmentImportRows = pgTable(
+  'apartment_import_rows',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    batchId: uuid('batch_id')
+      .notNull()
+      .references(() => apartmentImportBatches.id, { onDelete: 'cascade' }),
+    sourceRowId: varchar('source_row_id', { length: 100 }).notNull(),
+    rowNumber: integer('row_number'),
+    sourcePage: integer('source_page'),
+    sourceId: varchar('source_id', { length: 100 }),
+    apartmentId: uuid('apartment_id').references(() => apartments.id, { onDelete: 'set null' }),
+    name: text('name').notNull(),
+    cityName: text('city_name'),
+    districtName: text('district_name'),
+    status: varchar('status', { length: 32 }).notNull(),
+    message: text('message'),
+    rollbackStatus: varchar('rollback_status', { length: 32 }).notNull().default('not_started'),
+    rolledBackAt: timestamp('rolled_back_at', { withTimezone: true }),
+    rollbackMessage: text('rollback_message'),
+    warnings: jsonb('warnings'),
+    errors: jsonb('errors'),
+    details: jsonb('details'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    apartmentImportRowsBatchIdx: index('apartment_import_rows_batch_idx').on(table.batchId),
+    apartmentImportRowsApartmentIdx: index('apartment_import_rows_apartment_idx').on(
+      table.apartmentId
+    ),
+  })
+);
+
 export const loginAttempts = pgTable(
   'login_attempts',
   {
@@ -155,6 +235,7 @@ export const apartmentsRelations = relations(apartments, ({ one }) => ({
 export const usersRelations = relations(users, ({ many }) => ({
   sessions: many(userSessions),
   auditLogs: many(auditLogs),
+  apartmentImportBatches: many(apartmentImportBatches),
 }));
 
 export const userSessionsRelations = relations(userSessions, ({ one }) => ({
@@ -168,6 +249,32 @@ export const auditLogsRelations = relations(auditLogs, ({ one }) => ({
   actorUser: one(users, {
     fields: [auditLogs.actorUserId],
     references: [users.id],
+  }),
+}));
+
+export const apartmentImportBatchesRelations = relations(
+  apartmentImportBatches,
+  ({ one, many }) => ({
+    actorUser: one(users, {
+      fields: [apartmentImportBatches.actorUserId],
+      references: [users.id],
+    }),
+    rolledBackByUser: one(users, {
+      fields: [apartmentImportBatches.rolledBackByUserId],
+      references: [users.id],
+    }),
+    rows: many(apartmentImportRows),
+  })
+);
+
+export const apartmentImportRowsRelations = relations(apartmentImportRows, ({ one }) => ({
+  batch: one(apartmentImportBatches, {
+    fields: [apartmentImportRows.batchId],
+    references: [apartmentImportBatches.id],
+  }),
+  apartment: one(apartments, {
+    fields: [apartmentImportRows.apartmentId],
+    references: [apartments.id],
   }),
 }));
 
@@ -190,7 +297,14 @@ export type NewUserSession = typeof userSessions.$inferInsert;
 export type AuditLog = typeof auditLogs.$inferSelect;
 export type NewAuditLog = typeof auditLogs.$inferInsert;
 
+export type ApartmentImportBatch = typeof apartmentImportBatches.$inferSelect;
+export type NewApartmentImportBatch = typeof apartmentImportBatches.$inferInsert;
+
+export type ApartmentImportRow = typeof apartmentImportRows.$inferSelect;
+export type NewApartmentImportRow = typeof apartmentImportRows.$inferInsert;
+
 export type LoginAttempt = typeof loginAttempts.$inferSelect;
 export type NewLoginAttempt = typeof loginAttempts.$inferInsert;
 
 export type FinishingType = (typeof finishingEnum.enumValues)[number];
+export type ApartmentImportMode = (typeof apartmentImportModeEnum.enumValues)[number];

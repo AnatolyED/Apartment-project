@@ -13,10 +13,11 @@ interface PageHeaderProps {
     href: string;
     text: string;
   };
+  actions?: React.ReactNode;
   icon?: React.ReactNode;
 }
 
-export function PageHeader({ title, subtitle, addButton, icon }: PageHeaderProps) {
+export function PageHeader({ title, subtitle, addButton, actions, icon }: PageHeaderProps) {
   return (
     <div className="flex items-center justify-between mb-8">
       <div className="flex items-center gap-4">
@@ -34,13 +35,18 @@ export function PageHeader({ title, subtitle, addButton, icon }: PageHeaderProps
           )}
         </div>
       </div>
-      {addButton && (
-        <Link href={addButton.href}>
-          <Button className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white shadow-lg hover:shadow-xl transition-all duration-200 hover:-translate-y-0.5">
-            <Plus className="w-4 h-4 mr-2" />
-            {addButton.text}
-          </Button>
-        </Link>
+      {(actions || addButton) && (
+        <div className="flex items-center gap-3">
+          {actions}
+          {addButton && (
+            <Link href={addButton.href}>
+              <Button className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white shadow-lg hover:shadow-xl transition-all duration-200 hover:-translate-y-0.5">
+                <Plus className="w-4 h-4 mr-2" />
+                {addButton.text}
+              </Button>
+            </Link>
+          )}
+        </div>
       )}
     </div>
   );

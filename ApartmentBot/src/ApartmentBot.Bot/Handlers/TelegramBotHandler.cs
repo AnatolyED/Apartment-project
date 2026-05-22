@@ -541,6 +541,25 @@ public sealed class TelegramBotHandler : IBotHandler
                 return;
             }
 
+            if (data.StartsWith(ApartmentPhotoCallbackData.Prefix))
+            {
+                var photoView = ApartmentPhotoCallbackData.Parse(data);
+                await AnswerCallbackOnceAsync();
+                await _apartmentNavigationService.HandleSelectedApartmentAsync(
+                    botClient,
+                    userId,
+                    state,
+                    apartment => _apartmentPresentationService.SwitchApartmentPhotoAsync(
+                        botClient,
+                        userId,
+                        apartment,
+                        callbackQuery.Message!.MessageId,
+                        photoView,
+                        cancellationToken),
+                    cancellationToken);
+                return;
+            }
+
             // Обработка выбора квартиры
             if (data.StartsWith(ApartmentCallbackData.Prefix))
             {

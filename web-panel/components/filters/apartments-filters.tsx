@@ -1,12 +1,11 @@
 /**
- * Компонент фильтров для страницы квартир
- * Две строки: (Город, Район, Отделка, Комнаты) и (Цена, Площадь)
+ * Компонент фильтров для страницы квартир.
+ * Две строки: (Город, Район, Отделка, Комнаты) и (Цена, Площадь).
  */
 
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useMemo, useState } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -27,7 +26,7 @@ import type { getDistrictsAction } from '@/lib/districts/actions';
 // Константы
 // ============================================
 
-const ROOM_OPTIONS = ['1', '1+', '2', '2+', '3', '3+', '4+', 'студия'];
+const ROOM_OPTIONS = ['1', '1+', '2', '2+', '3', '3+', '4+', 'Студия'];
 
 // ============================================
 // Типы
@@ -49,26 +48,11 @@ interface FiltersProps {
 }
 
 // ============================================
-// Вспомогательные функции
-// ============================================
-
-function getStringParam(
-  searchParams: { [key: string]: string | string[] | undefined },
-  param: string
-): string {
-  const value = searchParams[param];
-  if (Array.isArray(value)) return value[0] || '';
-  return value || '';
-}
-
-// ============================================
 // Компонент фильтров
 // ============================================
 
 export function ApartmentsFilters({ districts, cities, initialFilters = {} }: FiltersProps) {
-  const router = useRouter();
-  
-  // Инициализируем state значениями из URL
+  // Инициализируем state значениями из URL.
   const [selectedCity, setSelectedCity] = useState(initialFilters.cityId || 'all');
   const [selectedDistrict, setSelectedDistrict] = useState(initialFilters.districtId || 'all');
   const [selectedFinishing, setSelectedFinishing] = useState(initialFilters.finishing || 'any');
@@ -78,37 +62,18 @@ export function ApartmentsFilters({ districts, cities, initialFilters = {} }: Fi
   const [areaMin, setAreaMin] = useState(initialFilters.areaMin || '');
   const [areaMax, setAreaMax] = useState(initialFilters.areaMax || '');
   
-  // Фильтрация районов по выбранному городу
-  const filteredDistricts = selectedCity && selectedCity !== 'all'
-    ? districts.districts?.filter(d => d.cityId === selectedCity)
-    : districts.districts;
-  
-  // Сбрасываем выбранный район, если он не входит в выбранный город
-  useEffect(() => {
-    if (selectedCity && selectedCity !== 'all' && selectedDistrict && selectedDistrict !== 'all') {
-      const districtInCity = filteredDistricts?.some(d => d.id === selectedDistrict);
-      if (!districtInCity) {
-        setSelectedDistrict('all');
-      }
-    }
-  }, [selectedCity, filteredDistricts, selectedDistrict]);
-
-  // Проверка: есть ли активные фильтры
-  const hasActiveFilters =
-    selectedCity !== 'all' ||
-    selectedDistrict !== 'all' ||
-    selectedFinishing !== 'any' ||
-    selectedRooms !== 'any' ||
-    priceMin ||
-    priceMax ||
-    areaMin ||
-    areaMax;
-
-  // Обработка отправки формы
+  const filteredDistricts = useMemo(
+    () =>
+      selectedCity && selectedCity !== 'all'
+        ? districts.districts?.filter((d) => d.cityId === selectedCity)
+        : districts.districts,
+    [selectedCity, districts.districts]
+  );
+  // Обработка отправки формы.
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
 
-    // Собираем только непустые параметры
+    // Собираем только непустые параметры.
     const params = new URLSearchParams();
     if (selectedCity && selectedCity !== 'all') params.set('cityId', selectedCity);
     if (selectedDistrict && selectedDistrict !== 'all') params.set('districtId', selectedDistrict);
@@ -119,7 +84,7 @@ export function ApartmentsFilters({ districts, cities, initialFilters = {} }: Fi
     if (areaMin) params.set('areaMin', areaMin);
     if (areaMax) params.set('areaMax', areaMax);
 
-    // Переходим на страницу с параметрами через полную перезагрузку
+    // Переходим на страницу с параметрами через полную перезагрузку.
     const queryString = params.toString();
     const newPath = queryString
       ? `/dashboard/apartments?${queryString}`
@@ -128,7 +93,7 @@ export function ApartmentsFilters({ districts, cities, initialFilters = {} }: Fi
     window.location.href = newPath;
   };
 
-  // Сброс фильтров
+  // Сброс фильтров.
   const handleReset = () => {
     setSelectedCity('all');
     setSelectedDistrict('all');
@@ -156,7 +121,13 @@ export function ApartmentsFilters({ districts, cities, initialFilters = {} }: Fi
             {/* Город */}
             <div className="space-y-2">
               <Label htmlFor="cityId">Город</Label>
-              <Select value={selectedCity} onValueChange={setSelectedCity}>
+              <Select
+                value={selectedCity}
+                onValueChange={(value) => {
+                  setSelectedCity(value);
+                  setSelectedDistrict('all');
+                }}
+              >
                 <SelectTrigger className="w-full">
                   <SelectValue placeholder="Все города" />
                 </SelectTrigger>

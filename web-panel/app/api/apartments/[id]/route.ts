@@ -4,7 +4,8 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getApartmentByIdAction } from '@/lib/apartments/actions';
+import { requireBotApiToken } from '@/lib/api/bot-auth';
+import { findApartmentById } from '@/lib/apartments/queries';
 
 function mapApartmentForApi(apartment: Record<string, unknown>, compact: boolean) {
   if (!compact) {
@@ -21,6 +22,9 @@ function mapApartmentForApi(apartment: Record<string, unknown>, compact: boolean
     floor: apartment.floor,
     price: apartment.price,
     photos: apartment.photos,
+    isActive: apartment.isActive,
+    createdAt: apartment.createdAt,
+    updatedAt: apartment.updatedAt,
   };
 }
 
@@ -29,11 +33,16 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const unauthorized = requireBotApiToken(request);
+    if (unauthorized) {
+      return unauthorized;
+    }
+
     const { id } = await params;
     const compact = request.nextUrl.searchParams.get('view') === 'bot';
-    const result = await getApartmentByIdAction(id);
+    const apartment = await findApartmentById(id);
 
-    if (!result.success || !result.apartment) {
+    if (!apartment) {
       return NextResponse.json({
         success: false,
         error: {
@@ -49,7 +58,7 @@ export async function GET(
       data: {
         apartments: [
           mapApartmentForApi(
-            result.apartment as unknown as Record<string, unknown>,
+            apartment as unknown as Record<string, unknown>,
             compact
           ),
         ]

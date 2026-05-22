@@ -15,6 +15,76 @@
       "when": 1772754290912,
       "tag": "0001_mushy_blacklash",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1772754290913,
+      "tag": "0002_users_and_sessions",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1772754290914,
+      "tag": "0003_protected_users",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1772754290915,
+      "tag": "0004_audit_logs",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1772754290916,
+      "tag": "0005_must_change_password",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1772754290917,
+      "tag": "0006_user_blocking",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1772754290918,
+      "tag": "0007_reconcile_auth_runtime",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1772754290919,
+      "tag": "0008_fix_finishing_enum_encoding",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1772754290920,
+      "tag": "0009_import_idempotency_indexes",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1772754290921,
+      "tag": "0010_apartment_import_history",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1772754290922,
+      "tag": "0011_import_history_rollback",
+      "breakpoints": true
     }
   ]
 }

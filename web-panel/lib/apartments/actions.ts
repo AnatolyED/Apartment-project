@@ -6,10 +6,10 @@
 'use server';
 
 import { z } from 'zod';
-import { eq, and, desc, asc, count, gte, lte, sql, type SQL } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { revalidatePath } from 'next/cache';
 import { db } from '@/lib/db';
-import { apartments, districts, type Apartment, type NewApartment } from '@/lib/db/schema';
+import { apartments, type Apartment, type NewApartment } from '@/lib/db/schema';
 import {
   createApartmentSchema,
   updateApartmentSchema,
@@ -24,6 +24,13 @@ import {
 } from '@/lib/storage';
 import { assertRole } from '@/lib/auth/session';
 import { writeAuditLog } from '@/lib/audit/actions';
+import {
+  findApartmentById,
+  listApartments,
+  type ApartmentsQueryParams,
+} from '@/lib/apartments/queries';
+
+export type { ApartmentsQueryParams } from '@/lib/apartments/queries';
 
 // ============================================
 // Типы результатов
@@ -47,78 +54,6 @@ interface ApartmentsListResult {
 // ============================================
 // Параметры запроса списка
 // ============================================
-
-export interface ApartmentsQueryParams {
-  page?: number;
-  limit?: number;
-  sort?: string;
-  cityId?: string;
-  districtId?: string;
-  finishing?: string;
-  rooms?: string;
-  priceMin?: number;
-  priceMax?: number;
-  areaMin?: number;
-  areaMax?: number;
-}
-
-type ApartmentWhereCondition = SQL<unknown>;
-
-function buildApartmentWhereConditions(
-  params: {
-    districtId?: string;
-    finishing?: string;
-    rooms?: string;
-    priceMin?: number;
-    priceMax?: number;
-    areaMin?: number;
-    areaMax?: number;
-  }
-): ApartmentWhereCondition[] {
-  const conditions: ApartmentWhereCondition[] = [eq(apartments.isActive, true)];
-
-  if (params.districtId) {
-    conditions.push(eq(apartments.districtId, params.districtId));
-  }
-
-  if (params.finishing) {
-    conditions.push(eq(apartments.finishing, params.finishing as NewApartment['finishing']));
-  }
-
-  if (params.rooms) {
-    const plusMatch = params.rooms.match(/^(\d+)\+$/);
-
-    if (plusMatch) {
-      const minRooms = Number.parseInt(plusMatch[1], 10);
-      conditions.push(
-        sql<boolean>`CASE
-          WHEN ${apartments.rooms} ~ '^[0-9]+$' THEN CAST(${apartments.rooms} AS integer) >= ${minRooms}
-          ELSE false
-        END`
-      );
-    } else {
-      conditions.push(eq(apartments.rooms, params.rooms));
-    }
-  }
-
-  if (params.priceMin !== undefined) {
-    conditions.push(gte(apartments.price, params.priceMin.toString()));
-  }
-
-  if (params.priceMax !== undefined) {
-    conditions.push(lte(apartments.price, params.priceMax.toString()));
-  }
-
-  if (params.areaMin !== undefined) {
-    conditions.push(gte(apartments.area, params.areaMin));
-  }
-
-  if (params.areaMax !== undefined) {
-    conditions.push(lte(apartments.area, params.areaMax));
-  }
-
-  return conditions;
-}
 
 // ============================================
 // CREATE: Создание новой квартиры
@@ -170,7 +105,7 @@ export async function createApartmentAction(
       finishing: validatedData.finishing,
       rooms: validatedData.rooms,
       area: validatedData.area,
-      floor: 1,
+      floor: validatedData.floor,
       price: validatedData.price.toString(),
       photos: [],
       isActive: true,
@@ -299,175 +234,36 @@ export async function getApartmentsAction(
   params: ApartmentsQueryParams = {}
 ): Promise<ApartmentsListResult> {
   try {
-    const {
-      page = 1,
-      limit = 20,
-      sort = 'created_desc',
-      cityId,
-      districtId,
-      finishing,
-      rooms,
-      priceMin,
-      priceMax,
-      areaMin,
-      areaMax,
-    } = params;
-
-    // Фильтруем 'all' и 'any' значения
-    const filteredCityId = cityId && cityId !== 'all' ? cityId : undefined;
-    const filteredDistrictId = districtId && districtId !== 'all' ? districtId : undefined;
-    const filteredFinishing = finishing && finishing !== 'any' ? finishing : undefined;
-    const filteredRooms = rooms && rooms !== 'any' ? rooms : undefined;
-
-    // ============================================
-    // Шаг 1: Построение условий WHERE
-    // ============================================
-    const apartmentConditions = buildApartmentWhereConditions({
-      districtId: filteredDistrictId,
-      finishing: filteredFinishing,
-      rooms: filteredRooms,
-      priceMin,
-      priceMax,
-      areaMin,
-      areaMax,
-    });
-    const hasJoinFilters =
-      !!filteredCityId ||
-      !!filteredDistrictId ||
-      !!filteredFinishing ||
-      !!filteredRooms ||
-      priceMin !== undefined ||
-      priceMax !== undefined ||
-      areaMin !== undefined ||
-      areaMax !== undefined;
-
-    // ============================================
-    // Шаг 2: Получение общего количества записей
-    // ============================================
-    let total: number;
-    
-    if (hasJoinFilters) {
-      const joinConditions = [...apartmentConditions];
-      if (filteredCityId) {
-        joinConditions.push(eq(districts.cityId, filteredCityId));
-      }
-
-      const countResult = await db
-        .select({ count: count() })
-        .from(apartments)
-        .innerJoin(districts, eq(apartments.districtId, districts.id))
-        .where(and(...joinConditions));
-      total = countResult[0]?.count || 0;
-    } else {
-      const countResult = await db
-        .select({ count: count() })
-        .from(apartments)
-        .where(and(...apartmentConditions));
-      total = countResult[0]?.count || 0;
-    }
-
-    // ============================================
-    // Шаг 3: Построение сортировки
-    // ============================================
-    const [sortField, sortOrder] = sort.split('_');
-    const orderFn = sortOrder === 'asc' ? asc : desc;
-
-    let orderByExpr;
-    switch (sortField) {
-      case 'price':
-        orderByExpr = orderFn(apartments.price);
-        break;
-      case 'area':
-        orderByExpr = orderFn(apartments.area);
-        break;
-      case 'floor':
-        orderByExpr = orderFn(apartments.floor);
-        break;
-      case 'rooms':
-        orderByExpr = orderFn(apartments.rooms);
-        break;
-      case 'finishing':
-        orderByExpr = orderFn(apartments.finishing);
-        break;
-      case 'name':
-        orderByExpr = orderFn(apartments.name);
-        break;
-      case 'created':
-      default:
-        orderByExpr = orderFn(apartments.createdAt);
-        break;
-    }
-
-    // ============================================
-    // Шаг 4: Получение данных с пагинацией
-    // ============================================
-    const offset = (page - 1) * limit;
-
-    let result;
-
-    if (hasJoinFilters) {
-      const joinConditions = [...apartmentConditions];
-      if (filteredCityId) {
-        joinConditions.push(eq(districts.cityId, filteredCityId));
-      }
-
-      const apartmentsWithDistrict = await db
-        .select({
-          apartment: apartments,
-        })
-        .from(apartments)
-        .innerJoin(districts, eq(apartments.districtId, districts.id))
-        .where(and(...joinConditions))
-        .orderBy(orderByExpr)
-        .limit(limit)
-        .offset(offset);
-
-      result = apartmentsWithDistrict.map(r => r.apartment);
-    } else {
-      result = await db
-        .select()
-        .from(apartments)
-        .where(and(...apartmentConditions))
-        .orderBy(orderByExpr)
-        .limit(limit)
-        .offset(offset);
-    }
+    await assertRole(['admin', 'moderator']);
+    const result = await listApartments(params);
 
     return {
       success: true,
-      apartments: result,
-      total: Number(total),
-      totalPages: Math.ceil(Number(total) / limit),
-      currentPage: page,
+      apartments: result.apartments,
+      total: result.total,
+      totalPages: result.totalPages,
+      currentPage: result.currentPage,
     };
   } catch (error) {
     console.error('Get apartments error:', error);
     return {
       success: false,
-      error: 'Не удалось загрузить список квартир',
+      error: '?? ??????? ????????? ?????? ???????',
     };
   }
 }
 
-/**
- * Получение одной квартиры по ID
- */
 export async function getApartmentByIdAction(
   id: string
 ): Promise<ApartmentResult> {
   try {
-    const result = await db
-      .select()
-      .from(apartments)
-      .where(and(eq(apartments.id, id), eq(apartments.isActive, true)))
-      .limit(1);
-
-    const apartment = result[0];
+    await assertRole(['admin', 'moderator']);
+    const apartment = await findApartmentById(id);
 
     if (!apartment) {
       return {
         success: false,
-        error: 'Квартира не найдена',
+        error: '???????? ?? ???????',
       };
     }
 
@@ -479,7 +275,7 @@ export async function getApartmentByIdAction(
     console.error('Get apartment by ID error:', error);
     return {
       success: false,
-      error: 'Не удалось загрузить квартиру',
+      error: '?? ??????? ????????? ????????',
     };
   }
 }
@@ -514,8 +310,6 @@ export async function updateApartmentAction(
     const rawData = Object.fromEntries(formData.entries());
 
     // Обработка URL удалённых фото (физическое удаление файлов)
-    const deletedPhotoUrls = formData.getAll('deletedPhotoUrls') as string[];
-    
     // Удаляем файлы с диска
     delete rawData.photos;
     delete rawData.deletedPhotoUrls;
@@ -525,8 +319,16 @@ export async function updateApartmentAction(
     // ============================================
     // Шаг 3: Формирование нового массива фото
     // ============================================
-    const currentPhotos = formData.getAll('currentPhotos') as string[];
-    const photoPaths = [...currentPhotos];
+    const existingPhotos = existing.apartment.photos ?? [];
+    const existingPhotoSet = new Set(existingPhotos);
+    const currentPhotos = (formData.getAll('currentPhotos') as string[]).filter((path) =>
+      existingPhotoSet.has(path)
+    );
+    const deletedPhotoUrls = (formData.getAll('deletedPhotoUrls') as string[]).filter((path) =>
+      existingPhotoSet.has(path)
+    );
+    const deletedPhotoSet = new Set(deletedPhotoUrls);
+    const photoPaths = currentPhotos.filter((path) => !deletedPhotoSet.has(path));
 
     // ============================================
     // Шаг 4: Обработка новых файлов
@@ -576,6 +378,7 @@ export async function updateApartmentAction(
     if (validatedData.finishing !== undefined) updateData.finishing = validatedData.finishing;
     if (validatedData.rooms !== undefined) updateData.rooms = validatedData.rooms;
     if (validatedData.area !== undefined) updateData.area = validatedData.area;
+    if (validatedData.floor !== undefined) updateData.floor = validatedData.floor;
     if (validatedData.price !== undefined) updateData.price = validatedData.price.toString();
 
     const updated = await db

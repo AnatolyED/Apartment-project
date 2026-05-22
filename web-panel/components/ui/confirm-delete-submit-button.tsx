@@ -21,13 +21,14 @@ export function ConfirmDeleteSubmitButton({
       className="transition-colors hover:bg-red-100 hover:text-red-600"
       disabled={pending}
       title="Удалить"
+      aria-label="Удалить"
       onClick={(event) => {
         if (!window.confirm(confirmMessage)) {
           event.preventDefault();
         }
       }}
     >
-      <Trash2 className="h-4 w-4" />
+      <Trash2 className="h-4 w-4" aria-hidden="true" />
     </Button>
   );
 }

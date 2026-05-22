@@ -61,13 +61,13 @@ public sealed class LeadRequestServiceTests
             button => button.RequestContact == true);
         Assert.Contains(
             sentMarkup.Keyboard.SelectMany(row => row),
-            button => button.Text == "\u274C \u041E\u0442\u043C\u0435\u043D\u0430");
+            button => button.Text.Contains("Отмена", StringComparison.OrdinalIgnoreCase));
 
         telegramMessageService.Verify(
             x => x.SendMessageAndReturnAsync(
                 It.IsAny<ITelegramBotClient>(),
                 It.Is<ChatId>(chatId => chatId.Identifier == 777),
-                It.Is<string>(text => text.Contains("Р—Р°СЏРІРєР° РЅР° РєРѕРЅСЃСѓР»СЊС‚Р°С†РёСЋ")),
+                It.Is<string>(text => text.Contains("Заявка на консультацию")),
                 ParseMode.Markdown,
                 It.Is<ReplyMarkup>(markup => markup is ReplyKeyboardMarkup),
                 It.IsAny<CancellationToken>()),
@@ -121,10 +121,10 @@ public sealed class LeadRequestServiceTests
         Assert.NotNull(sentMarkup);
         Assert.Contains(
             sentMarkup!.Keyboard.SelectMany(row => row),
-            button => button.Text == "рџ“± РћС‚РїСЂР°РІРёС‚СЊ РєРѕРЅС‚Р°РєС‚" && button.RequestContact == true);
+            button => button.RequestContact == true);
         Assert.Contains(
             sentMarkup.Keyboard.SelectMany(row => row),
-            button => button.Text == "вќЊ РћС‚РјРµРЅР°");
+            button => button.Text.Contains("Отмена", StringComparison.OrdinalIgnoreCase));
 
         userStateService.Verify(
             x => x.SetStateAsync(777, state, It.IsAny<CancellationToken>()),
@@ -213,18 +213,8 @@ public sealed class LeadRequestServiceTests
             x => x.SendMessageAsync(
                 It.IsAny<ITelegramBotClient>(),
                 It.Is<ChatId>(chatId => chatId.Identifier == 777),
-                It.IsAny<string>(),
+                It.Is<string>(text => text.Contains("+79990003303")),
                 ParseMode.Markdown,
-                It.Is<ReplyMarkup>(markup => markup is ReplyKeyboardRemove),
-                It.IsAny<CancellationToken>()),
-            Times.Once);
-
-        telegramMessageService.Verify(
-            x => x.SendMessageAsync(
-                It.IsAny<ITelegramBotClient>(),
-                It.Is<ChatId>(chatId => chatId.Identifier == 777),
-                It.Is<string>(text => text.Contains("Р§С‚Рѕ С…РѕС‚РёС‚Рµ СЃРґРµР»Р°С‚СЊ РґР°Р»СЊС€Рµ?")),
-                ParseMode.None,
                 It.Is<ReplyMarkup>(markup => markup is InlineKeyboardMarkup),
                 It.IsAny<CancellationToken>()),
             Times.Once);
@@ -266,7 +256,7 @@ public sealed class LeadRequestServiceTests
             x => x.SendMessageAsync(
                 It.IsAny<ITelegramBotClient>(),
                 It.Is<ChatId>(chatId => chatId.Identifier == 777),
-                It.Is<string>(text => text.Contains("РќРµРєРѕСЂСЂРµРєС‚РЅС‹Р№ РЅРѕРјРµСЂ С‚РµР»РµС„РѕРЅР°")),
+                It.Is<string>(text => text.Contains("Некорректный номер телефона")),
                 ParseMode.Markdown,
                 It.Is<ReplyMarkup>(markup => markup is ReplyKeyboardMarkup),
                 It.IsAny<CancellationToken>()),
@@ -314,7 +304,7 @@ public sealed class LeadRequestServiceTests
             x => x.SendMessageAsync(
                 It.IsAny<ITelegramBotClient>(),
                 It.Is<ChatId>(chatId => chatId.Identifier == 777),
-                It.Is<string>(text => text.Contains("РќРµРєРѕСЂСЂРµРєС‚РЅС‹Р№ РЅРѕРјРµСЂ С‚РµР»РµС„РѕРЅР°")),
+                It.Is<string>(text => text.Contains("Некорректный номер телефона")),
                 ParseMode.Markdown,
                 It.Is<ReplyMarkup>(markup => markup is ReplyKeyboardMarkup),
                 It.IsAny<CancellationToken>()),
@@ -382,18 +372,8 @@ public sealed class LeadRequestServiceTests
             x => x.SendMessageAsync(
                 It.IsAny<ITelegramBotClient>(),
                 It.Is<ChatId>(chatId => chatId.Identifier == 777),
-                It.IsAny<string>(),
+                It.Is<string>(text => text.Contains("+79995554433")),
                 ParseMode.Markdown,
-                It.Is<ReplyMarkup>(markup => markup is ReplyKeyboardRemove),
-                It.IsAny<CancellationToken>()),
-            Times.Once);
-
-        telegramMessageService.Verify(
-            x => x.SendMessageAsync(
-                It.IsAny<ITelegramBotClient>(),
-                It.Is<ChatId>(chatId => chatId.Identifier == 777),
-                It.Is<string>(text => text.Contains("Р§С‚Рѕ С…РѕС‚РёС‚Рµ СЃРґРµР»Р°С‚СЊ РґР°Р»СЊС€Рµ?")),
-                ParseMode.None,
                 It.Is<ReplyMarkup>(markup => markup is InlineKeyboardMarkup),
                 It.IsAny<CancellationToken>()),
             Times.Once);
@@ -439,7 +419,7 @@ public sealed class LeadRequestServiceTests
             x => x.SendMessageAsync(
                 It.IsAny<ITelegramBotClient>(),
                 It.Is<ChatId>(chatId => chatId.Identifier == 777),
-                It.Is<string>(text => text.Contains("РќРµРєРѕСЂСЂРµРєС‚РЅС‹Р№ РЅРѕРјРµСЂ С‚РµР»РµС„РѕРЅР°")),
+                It.Is<string>(text => text.Contains("Некорректный номер телефона")),
                 ParseMode.Markdown,
                 It.Is<ReplyMarkup>(markup => markup is ReplyKeyboardMarkup),
                 It.IsAny<CancellationToken>()),

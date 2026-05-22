@@ -2,7 +2,7 @@ import { createHash, randomBytes, scrypt as scryptCallback, timingSafeEqual } fr
 import { promisify } from 'util';
 import { cookies, headers } from 'next/headers';
 import { redirect } from 'next/navigation';
-import { and, eq, gt, sql } from 'drizzle-orm';
+import { and, eq, gt } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { loginAttempts, userSessions, users, type UserRole } from '@/lib/db/schema';
 
@@ -86,105 +86,6 @@ async function verifyPassword(password: string, passwordHash: string) {
 async function ensureAuthInfrastructure() {
   if (!ensureAuthPromise) {
     ensureAuthPromise = (async () => {
-      await db.execute(
-        sql.raw(`
-DO $$
-BEGIN
-  CREATE TYPE user_role AS ENUM ('admin', 'moderator');
-EXCEPTION
-  WHEN duplicate_object THEN NULL;
-END
-$$;
-`)
-      );
-
-      await db.execute(
-        sql.raw(`
-CREATE TABLE IF NOT EXISTS users (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-  login varchar(100) NOT NULL,
-  password_hash text NOT NULL,
-  role user_role NOT NULL DEFAULT 'moderator',
-  is_protected boolean NOT NULL DEFAULT false,
-  is_blocked boolean NOT NULL DEFAULT false,
-  must_change_password boolean NOT NULL DEFAULT false,
-  is_active boolean NOT NULL DEFAULT true,
-  last_login_at timestamp with time zone,
-  created_at timestamp with time zone NOT NULL DEFAULT now(),
-  updated_at timestamp with time zone NOT NULL DEFAULT now()
-);
-`)
-      );
-
-      await db.execute(
-        sql.raw(`
-ALTER TABLE users
-ADD COLUMN IF NOT EXISTS is_protected boolean NOT NULL DEFAULT false;
-`)
-      );
-
-      await db.execute(
-        sql.raw(`
-ALTER TABLE users
-ADD COLUMN IF NOT EXISTS is_blocked boolean NOT NULL DEFAULT false;
-`)
-      );
-
-      await db.execute(
-        sql.raw(`
-ALTER TABLE users
-ADD COLUMN IF NOT EXISTS must_change_password boolean NOT NULL DEFAULT false;
-`)
-      );
-
-      await db.execute(
-        sql.raw(`
-CREATE UNIQUE INDEX IF NOT EXISTS users_login_unique_idx ON users(login);
-`)
-      );
-
-      await db.execute(
-        sql.raw(`
-CREATE TABLE IF NOT EXISTS user_sessions (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-  user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  token_hash varchar(64) NOT NULL,
-  expires_at timestamp with time zone NOT NULL,
-  last_seen_at timestamp with time zone NOT NULL DEFAULT now(),
-  created_at timestamp with time zone NOT NULL DEFAULT now()
-);
-`)
-      );
-
-      await db.execute(
-        sql.raw(`
-CREATE UNIQUE INDEX IF NOT EXISTS user_sessions_token_hash_unique_idx
-ON user_sessions(token_hash);
-`)
-      );
-
-      await db.execute(
-        sql.raw(`
-CREATE TABLE IF NOT EXISTS login_attempts (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-  login varchar(100) NOT NULL,
-  ip_address varchar(128) NOT NULL,
-  failed_count integer NOT NULL DEFAULT 0,
-  locked_until timestamp with time zone,
-  last_failed_at timestamp with time zone,
-  created_at timestamp with time zone NOT NULL DEFAULT now(),
-  updated_at timestamp with time zone NOT NULL DEFAULT now()
-);
-`)
-      );
-
-      await db.execute(
-        sql.raw(`
-CREATE UNIQUE INDEX IF NOT EXISTS login_attempts_login_ip_unique_idx
-ON login_attempts(login, ip_address);
-`)
-      );
-
       const adminLogin = process.env.ADMIN_LOGIN?.trim();
       const adminPassword = process.env.ADMIN_PASSWORD;
 
@@ -376,7 +277,7 @@ export async function createSession(user: { id: string; login: string }) {
   const cookieStore = await cookies();
   const requestHeaders = await headers();
   const forwardedProto = requestHeaders.get('x-forwarded-proto');
-  const isHttps = forwardedProto === 'https';
+  const isHttps = process.env.NODE_ENV === 'production' || forwardedProto === 'https';
 
   const token = randomBytes(32).toString('base64url');
   const tokenHash = hashSessionToken(token);

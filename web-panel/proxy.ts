@@ -5,7 +5,7 @@ const SESSION_COOKIE_NAME = 'panel_session';
 const PUBLIC_PATHS = ['/', '/login'];
 const STATIC_PATHS = ['/_next', '/uploads', '/favicon.ico', '/icon.ico'];
 
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const sessionCookie = request.cookies.get(SESSION_COOKIE_NAME)?.value;
 

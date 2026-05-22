@@ -30,6 +30,21 @@ services:
     networks:
       - apartment-network
 
+  web-panel-migrate:
+    build:
+      context: ./web-panel
+      dockerfile: Dockerfile
+    command: ["npm", "run", "db:migrate"]
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-realty_db}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+    networks:
+      - apartment-network
+
   web-panel:
     build:
       context: ./web-panel
@@ -41,15 +56,23 @@ services:
       ADMIN_LOGIN: ${ADMIN_LOGIN}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD}
       SESSION_SECRET: ${SESSION_SECRET}
+      AUTH_LOGIN_ATTEMPTS_LIMIT: ${AUTH_LOGIN_ATTEMPTS_LIMIT:-5}
+      AUTH_LOGIN_LOCK_MINUTES: ${AUTH_LOGIN_LOCK_MINUTES:-15}
+      TRUST_FORWARDED_HEADERS: ${TRUST_FORWARDED_HEADERS:-false}
       NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
       BOT_DIAGNOSTICS_URL: ${BOT_DIAGNOSTICS_URL:-http://apartment-bot:8080}
+      DIAGNOSTICS_TOKEN: ${DIAGNOSTICS_TOKEN}
+      BOT_API_TOKEN: ${BOT_API_TOKEN}
+      ALLOW_UNAUTHENTICATED_BOT_API: ${ALLOW_UNAUTHENTICATED_BOT_API:-false}
     ports:
+      # Keep the admin panel private by default. Publish through a reverse proxy
+      # only after protecting bot-facing API routes with BOT_API_TOKEN.
       - "127.0.0.1:3000:3000"
     volumes:
       - web-panel-uploads:/app/public/uploads
     depends_on:
-      postgres:
-        condition: service_healthy
+      web-panel-migrate:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/api/health"]
       interval: 15s
@@ -68,10 +91,14 @@ services:
       ASPNETCORE_ENVIRONMENT: Production
       Diagnostics__Urls: http://0.0.0.0:8080
       WebPanel__BaseUrl: http://web-panel:3000/api
+      WebPanel__ApiToken: ${BOT_API_TOKEN}
       Telegram__BotToken: ${TELEGRAM_BOT_TOKEN}
       Telegram__ManagerChatId: ${TELEGRAM_MANAGER_CHAT_ID}
       Redis__ConnectionString: redis:6379
+      Diagnostics__Token: ${DIAGNOSTICS_TOKEN}
     ports:
+      # Diagnostics are localhost-only here. If proxied on VPS, keep
+      # DIAGNOSTICS_TOKEN set and do not expose these endpoints publicly.
       - "127.0.0.1:8080:8080"
     depends_on:
       redis:
@@ -86,6 +113,21 @@ services:
       start_period: 20s
     volumes:
       - web-panel-uploads:/shared-uploads
+    restart: unless-stopped
+    networks:
+      - apartment-network
+
+  nginx:
+    image: nginx:stable-alpine
+    depends_on:
+      web-panel:
+        condition: service_healthy
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./deploy/nginx/certs:/etc/nginx/certs:ro
     restart: unless-stopped
     networks:
       - apartment-network

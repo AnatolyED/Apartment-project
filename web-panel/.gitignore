@@ -12,6 +12,7 @@
 
 # testing
 /coverage
+/.apartment-import-cache/
 
 # next.js
 /.next/
@@ -19,6 +20,7 @@
 
 # production
 /build
+/public/uploads/
 
 # misc
 .DS_Store

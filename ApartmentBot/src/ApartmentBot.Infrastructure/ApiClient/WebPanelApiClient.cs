@@ -11,6 +11,7 @@ public interface IWebPanelApiClient
 {
     Task<IReadOnlyList<City>> GetCitiesAsync(CancellationToken cancellationToken = default);
     Task<IReadOnlyList<District>> GetDistrictsByCityIdAsync(Guid cityId, CancellationToken cancellationToken = default);
+    Task<District?> GetDistrictByIdAsync(Guid id, CancellationToken cancellationToken = default);
     Task<ApartmentPagedList> GetApartmentsAsync(
         Guid? districtId = null,
         Guid? cityId = null,
@@ -94,22 +95,41 @@ public sealed class WebPanelApiClient : IWebPanelApiClient
 
             var data = EnsureSuccessfulResponse(response);
 
-            return data.Districts.Select(d => new District
-            {
-                Id = Guid.Parse(d.Id),
-                CityId = Guid.Parse(d.CityId),
-                Name = d.Name,
-                Description = d.Description,
-                Photos = d.Photos,
-                IsActive = d.IsActive,
-                CreatedAt = d.CreatedAt,
-                UpdatedAt = d.UpdatedAt
-            }).ToList();
+            return data.Districts.Select(MapDistrict).ToList();
         }
         catch (HttpRequestException ex)
         {
             _logger.LogError(ex, "Ошибка HTTP при запросе районов");
             throw new ApiException("Ошибка соединения с API", "HTTP_ERROR", ex.Message);
+        }
+    }
+
+    public async Task<District?> GetDistrictByIdAsync(Guid id, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var requestUrl = BuildRequestUrl($"districts/{id}", new Dictionary<string, string?>
+            {
+                ["view"] = "bot"
+            });
+            _logger.LogInformation("Р—Р°РїСЂРѕСЃ СЂР°Р№РѕРЅР°: {Url}", requestUrl);
+
+            var response = await _httpClient.GetFromJsonAsync<ApiResponse<DistrictsResponse>>(
+                requestUrl,
+                cancellationToken);
+
+            if (response is null || !response.Success || response.Data is null)
+            {
+                return null;
+            }
+
+            var district = response.Data.Districts.FirstOrDefault();
+            return district is null ? null : MapDistrict(district);
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger.LogError(ex, "РћС€РёР±РєР° HTTP РїСЂРё Р·Р°РїСЂРѕСЃРµ СЂР°Р№РѕРЅР°");
+            throw new ApiException("РћС€РёР±РєР° СЃРѕРµРґРёРЅРµРЅРёСЏ СЃ API", "HTTP_ERROR", ex.Message);
         }
     }
 
@@ -155,8 +175,8 @@ public sealed class WebPanelApiClient : IWebPanelApiClient
             return new ApartmentPagedList(
                 data.Apartments.Select(a =>
                 {
-                    var apartmentId = !string.IsNullOrEmpty(a.Id) ? Guid.Parse(a.Id) : Guid.NewGuid();
-                    var apartmentDistrictId = !string.IsNullOrEmpty(a.DistrictId) ? Guid.Parse(a.DistrictId) : Guid.NewGuid();
+                    var apartmentId = ParseRequiredGuid(a.Id, "apartment.id");
+                    var apartmentDistrictId = ParseRequiredGuid(a.DistrictId, "apartment.districtId");
 
                     _logger.LogDebug("Маппинг квартиры: API Id={ApiId}, Mapped Id={Id}", a.Id, apartmentId);
 
@@ -214,8 +234,8 @@ public sealed class WebPanelApiClient : IWebPanelApiClient
 
             return new Apartment
             {
-                Id = Guid.Parse(apartment.Id),
-                DistrictId = Guid.Parse(apartment.DistrictId),
+                Id = ParseRequiredGuid(apartment.Id, "apartment.id"),
+                DistrictId = ParseRequiredGuid(apartment.DistrictId, "apartment.districtId"),
                 Name = apartment.Name,
                 Finishing = ParseFinishingType(apartment.Finishing),
                 Rooms = apartment.Rooms,
@@ -280,4 +300,32 @@ public sealed class WebPanelApiClient : IWebPanelApiClient
 
     private static string? FormatDecimal(decimal? value) =>
         value?.ToString(CultureInfo.InvariantCulture);
+
+    private static District MapDistrict(DistrictResponse district)
+    {
+        return new District
+        {
+            Id = ParseRequiredGuid(district.Id, "district.id"),
+            CityId = ParseRequiredGuid(district.CityId, "district.cityId"),
+            Name = district.Name,
+            Description = district.Description,
+            Photos = district.Photos,
+            IsActive = district.IsActive,
+            CreatedAt = district.CreatedAt,
+            UpdatedAt = district.UpdatedAt
+        };
+    }
+
+    private static Guid ParseRequiredGuid(string value, string fieldName)
+    {
+        if (Guid.TryParse(value, out var id) && id != Guid.Empty)
+        {
+            return id;
+        }
+
+        throw new ApiException(
+            $"API contract error: {fieldName} is empty or invalid.",
+            "INVALID_API_CONTRACT",
+            fieldName);
+    }
 }

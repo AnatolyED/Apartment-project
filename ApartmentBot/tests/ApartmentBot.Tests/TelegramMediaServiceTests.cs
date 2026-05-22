@@ -2,6 +2,7 @@ using ApartmentBot.Bot.Services;
 using ApartmentBot.Infrastructure.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+using Moq;
 
 namespace ApartmentBot.Tests;
 
@@ -77,11 +78,17 @@ public sealed class TelegramMediaServiceTests
 
     private static TelegramMediaService CreateService(string baseUrl)
     {
+        var httpClientFactory = new Mock<IHttpClientFactory>();
+        httpClientFactory
+            .Setup(x => x.CreateClient("telegram-media"))
+            .Returns(new HttpClient());
+
         return new TelegramMediaService(
             Options.Create(new WebPanelSettings
             {
                 BaseUrl = baseUrl
             }),
+            httpClientFactory.Object,
             NullLogger<TelegramMediaService>.Instance);
     }
 

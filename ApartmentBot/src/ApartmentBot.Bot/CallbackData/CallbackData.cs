@@ -30,6 +30,21 @@ public sealed class ApartmentCallbackData
     public static Guid Parse(string data) => Guid.Parse(data.Replace(Prefix, ""));
 }
 
+public static class ApartmentPhotoCallbackData
+{
+    public const string Prefix = "apt:photo:";
+    public const string Layout = "layout";
+    public const string Location = "location";
+
+    public static string ToCallbackData(string view) => $"{Prefix}{view}";
+
+    public static string Parse(string data) => data.Replace(Prefix, "");
+
+    public static bool IsKnownView(string view) =>
+        string.Equals(view, Layout, StringComparison.Ordinal) ||
+        string.Equals(view, Location, StringComparison.Ordinal);
+}
+
 public sealed class PageCallbackData
 {
     public const string Prefix = "page:";

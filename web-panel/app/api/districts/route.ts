@@ -4,7 +4,8 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getDistrictsAction } from '@/lib/districts/actions';
+import { requireBotApiToken } from '@/lib/api/bot-auth';
+import { listDistricts } from '@/lib/districts/queries';
 
 function mapDistrictForApi(district: Record<string, unknown>, compact: boolean) {
   if (!compact) {
@@ -17,19 +18,27 @@ function mapDistrictForApi(district: Record<string, unknown>, compact: boolean) 
     name: district.name,
     description: district.description,
     photos: district.photos,
+    isActive: district.isActive,
+    createdAt: district.createdAt,
+    updatedAt: district.updatedAt,
   };
 }
 
 export async function GET(request: NextRequest) {
   try {
+    const unauthorized = requireBotApiToken(request);
+    if (unauthorized) {
+      return unauthorized;
+    }
+
     const searchParams = request.nextUrl.searchParams;
     const cityId = searchParams.get('cityId');
     const compact = searchParams.get('view') === 'bot';
     
-    const result = await getDistrictsAction({
+    const result = await listDistricts({
       cityId: cityId || undefined,
     });
-    const districts = result.districts || [];
+    const districts = result.districts;
     
     return NextResponse.json({
       success: true,

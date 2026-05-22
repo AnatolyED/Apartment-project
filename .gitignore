@@ -2,10 +2,16 @@
 .env
 .env.*
 !.env.docker.example
+deploy/nginx/certs/
+*.crt
+*.key
 
 # AI/internal notes and docs
 *.md
 *.md.bak
+!README.md
+!docs/
+!docs/**/*.md
 
 # Build artifacts
 **/bin/
@@ -19,6 +25,7 @@
 **/node_modules/
 .dotnet/
 .codex-runlogs/
+.playwright-mcp/
 
 # IDE and OS files
 .vs/

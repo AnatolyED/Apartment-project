@@ -2,6 +2,8 @@ import { redirect } from 'next/navigation';
 import { requireSession } from '@/lib/auth/session';
 import { ChangePasswordForm } from './change-password-form';
 
+export const dynamic = 'force-dynamic';
+
 export default async function ChangePasswordPage() {
   const session = await requireSession();
 

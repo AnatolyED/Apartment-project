@@ -21,7 +21,7 @@
   <ItemGroup Condition="Exists('appsettings.Local.json')">
     <None Update="appsettings.Local.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      <CopyToPublishDirectory>Never</CopyToPublishDirectory>
     </None>
   </ItemGroup>
 </Project>

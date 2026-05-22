@@ -5,8 +5,7 @@
 
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useSearchParams, useRouter } from 'next/navigation';
+import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import {
@@ -25,7 +24,6 @@ interface DistrictsFiltersProps {
 }
 
 export function DistrictsFilters({ cities, initialCityId }: DistrictsFiltersProps) {
-  const router = useRouter();
   const [selectedCity, setSelectedCity] = useState(initialCityId || 'all');
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {

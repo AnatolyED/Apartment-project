@@ -129,6 +129,11 @@ export default function NewApartmentPage() {
             </div>
 
             <div className="space-y-2">
+              <Label htmlFor="floor">Этаж</Label>
+              <Input id="floor" name="floor" type="number" step="1" placeholder="7" required />
+            </div>
+
+            <div className="space-y-2">
               <Label htmlFor="price">Цена (₽)</Label>
               <Input
                 id="price"

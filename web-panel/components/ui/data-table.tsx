@@ -1,4 +1,7 @@
+import fs from 'fs';
+import path from 'path';
 import Link from 'next/link';
+import Image from 'next/image';
 import { Pencil } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -29,9 +32,36 @@ interface DataTableProps<T> {
   renderCell?: (item: T, key: string) => React.ReactNode;
   sortParams?: {
     currentSort: string;
-    params: any;
+    params: Record<string, string | string[] | undefined>;
     renderSortLink: (column: Column) => React.ReactNode;
   };
+}
+
+const publicUploadsPath = path.join(process.cwd(), 'public', 'uploads');
+
+function getExistingPublicPhoto(src: string | null | undefined) {
+  if (!src) {
+    return null;
+  }
+
+  try {
+    const url = new URL(src, 'http://local.invalid');
+    const pathname = decodeURIComponent(url.pathname);
+
+    if (!pathname.startsWith('/uploads/')) {
+      return src;
+    }
+
+    const localPath = path.join(process.cwd(), 'public', pathname);
+
+    if (!localPath.startsWith(publicUploadsPath) || !fs.existsSync(localPath)) {
+      return null;
+    }
+
+    return pathname;
+  } catch {
+    return src;
+  }
 }
 
 export function DataTable<T extends { id: string; name: string; photos?: string[] | null }>({
@@ -46,7 +76,7 @@ export function DataTable<T extends { id: string; name: string; photos?: string[
   const hasActions = !!editUrl || !!renderActions;
 
   return (
-    <Card className="overflow-hidden border-0 shadow-lg">
+    <Card className="overflow-hidden border border-gray-200 shadow-sm">
       <CardContent className="p-0">
         <Table>
           <TableHeader>
@@ -84,54 +114,61 @@ export function DataTable<T extends { id: string; name: string; photos?: string[
                 </TableCell>
               </TableRow>
             ) : (
-              data.map((item, index) => (
-                <TableRow
-                  key={item.id}
-                  className={`transition-colors duration-150 hover:bg-gradient-to-r hover:from-blue-50/50 hover:to-indigo-50/50 ${
-                    index % 2 === 0 ? 'bg-white' : 'bg-gray-50/30'
-                  }`}
-                >
-                  {imageField && (
-                    <TableCell className="text-center">
-                      {item.photos?.[0] ? (
-                        <img
-                          src={item.photos[0]}
-                          alt={item.name}
-                          className="mx-auto h-12 w-12 rounded-lg object-cover shadow-md"
-                        />
-                      ) : (
-                        <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-lg bg-gradient-to-br from-gray-100 to-gray-200">
-                          <span className="text-xs text-gray-400">Нет</span>
-                        </div>
-                      )}
-                    </TableCell>
-                  )}
-                  {columns.map((column) => (
-                    <TableCell key={column.key} className="align-middle">
-                      {renderCell ? renderCell(item, column.key) : (item as any)[column.key]}
-                    </TableCell>
-                  ))}
-                  {hasActions && (
-                    <TableCell className="text-center">
-                      <div className="flex items-center justify-center gap-1">
-                        {editUrl && (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            asChild
-                            className="transition-colors hover:bg-blue-100 hover:text-blue-600"
-                          >
-                            <Link href={editUrl(item)}>
-                              <Pencil className="h-4 w-4" />
-                            </Link>
-                          </Button>
+              data.map((item, index) => {
+                const photoSrc = getExistingPublicPhoto(item.photos?.[0]);
+
+                return (
+                  <TableRow
+                    key={item.id}
+                    className={`transition-colors duration-150 hover:bg-gradient-to-r hover:from-blue-50/50 hover:to-indigo-50/50 ${
+                      index % 2 === 0 ? 'bg-white' : 'bg-gray-50/30'
+                    }`}
+                  >
+                    {imageField && (
+                      <TableCell className="text-center">
+                        {photoSrc ? (
+                          <Image
+                            src={photoSrc}
+                            alt={item.name}
+                            width={48}
+                            height={48}
+                            unoptimized
+                            className="mx-auto h-12 w-12 rounded-lg object-cover shadow-md"
+                          />
+                        ) : (
+                          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-lg bg-gradient-to-br from-gray-100 to-gray-200">
+                            <span className="text-xs text-gray-400">Нет</span>
+                          </div>
                         )}
-                        {renderActions?.(item)}
-                      </div>
-                    </TableCell>
-                  )}
-                </TableRow>
-              ))
+                      </TableCell>
+                    )}
+                    {columns.map((column) => (
+                      <TableCell key={column.key} className="align-middle">
+                        {renderCell ? renderCell(item, column.key) : String(item[column.key as keyof T] ?? '')}
+                      </TableCell>
+                    ))}
+                    {hasActions && (
+                      <TableCell className="text-center">
+                        <div className="flex items-center justify-center gap-1">
+                          {editUrl && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              asChild
+                              className="transition-colors hover:bg-blue-100 hover:text-blue-600"
+                            >
+                              <Link href={editUrl(item)} aria-label={`Редактировать ${item.name}`}>
+                                <Pencil className="h-4 w-4" aria-hidden="true" />
+                              </Link>
+                            </Button>
+                          )}
+                          {renderActions?.(item)}
+                        </div>
+                      </TableCell>
+                    )}
+                  </TableRow>
+                );
+              })
             )}
           </TableBody>
         </Table>

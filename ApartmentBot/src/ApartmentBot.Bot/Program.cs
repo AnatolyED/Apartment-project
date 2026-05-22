@@ -54,7 +54,7 @@ builder.Services.AddSingleton<ITelegramBotClient>(sp =>
 
     var httpClient = new HttpClient
     {
-        Timeout = TimeSpan.FromSeconds(15)
+        Timeout = TimeSpan.FromMinutes(2)
     };
 
     return new TelegramBotClient(settings.BotToken, httpClient);
@@ -104,7 +104,7 @@ app.MapGet("/diagnostics/runtime", (ITelegramRuntimeStatusTracker tracker) =>
 {
     var snapshot = tracker.GetSnapshot();
     return Results.Ok(snapshot);
-});
+}).AddEndpointFilter(RequireDiagnosticsTokenAsync);
 
 app.MapGet(
     "/diagnostics/summary",
@@ -141,7 +141,7 @@ app.MapGet(
         };
 
         return Results.Ok(summary);
-    });
+    }).AddEndpointFilter(RequireDiagnosticsTokenAsync);
 
 app.Run();
 
@@ -190,4 +190,23 @@ static string[] BuildDiagnosticsHints(HealthReport report, TelegramRuntimeSnapsh
     }
 
     return hints.ToArray();
+}
+
+static ValueTask<object?> RequireDiagnosticsTokenAsync(EndpointFilterInvocationContext context, EndpointFilterDelegate next)
+{
+    var expectedToken = context.HttpContext.RequestServices
+        .GetRequiredService<IConfiguration>()["Diagnostics:Token"];
+
+    if (string.IsNullOrWhiteSpace(expectedToken))
+    {
+        return next(context);
+    }
+
+    var providedToken = context.HttpContext.Request.Headers["X-Diagnostics-Token"].ToString();
+    if (string.Equals(providedToken, expectedToken, StringComparison.Ordinal))
+    {
+        return next(context);
+    }
+
+    return ValueTask.FromResult<object?>(Results.Unauthorized());
 }

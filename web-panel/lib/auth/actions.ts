@@ -39,6 +39,10 @@ function formatRetryMessage(retryAfterSeconds: number) {
 
 async function getClientIpAddress() {
   const requestHeaders = await headers();
+  if (process.env.TRUST_FORWARDED_HEADERS !== 'true') {
+    return 'unknown';
+  }
+
   const forwardedFor = requestHeaders.get('x-forwarded-for');
   const realIp = requestHeaders.get('x-real-ip');
 
@@ -51,6 +55,23 @@ async function getClientIpAddress() {
   }
 
   return 'unknown';
+}
+
+function getSafeCallbackUrl(value: unknown) {
+  if (typeof value !== 'string') {
+    return '/dashboard';
+  }
+
+  if (!value.startsWith('/') || value.startsWith('//') || value.includes('\\')) {
+    return '/dashboard';
+  }
+
+  try {
+    const parsed = new URL(value, 'http://local.app');
+    return parsed.origin === 'http://local.app' ? `${parsed.pathname}${parsed.search}${parsed.hash}` : '/dashboard';
+  } catch {
+    return '/dashboard';
+  }
 }
 
 async function getUserByLogin(login: string) {
@@ -69,10 +90,7 @@ export async function loginAction(formData: FormData): Promise<LoginResult> {
     const rawData = Object.fromEntries(formData.entries());
     const validatedData = loginSchema.parse(rawData);
     const { login, password } = validatedData;
-    const callbackUrl =
-      typeof rawData.callbackUrl === 'string' && rawData.callbackUrl.startsWith('/')
-        ? rawData.callbackUrl
-        : '/dashboard';
+    const callbackUrl = getSafeCallbackUrl(rawData.callbackUrl);
     const ipAddress = await getClientIpAddress();
 
     const throttleState = await getLoginThrottleState(login, ipAddress);

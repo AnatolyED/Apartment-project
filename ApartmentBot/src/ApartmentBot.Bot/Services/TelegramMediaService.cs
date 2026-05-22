@@ -17,14 +17,19 @@ public interface ITelegramMediaService
 
 public sealed class TelegramMediaService : ITelegramMediaService
 {
+    private const long MaxHttpPhotoBytes = 5 * 1024 * 1024;
+
     private readonly IOptions<WebPanelSettings> _webPanelSettings;
+    private readonly IHttpClientFactory _httpClientFactory;
     private readonly ILogger<TelegramMediaService> _logger;
 
     public TelegramMediaService(
         IOptions<WebPanelSettings> webPanelSettings,
+        IHttpClientFactory httpClientFactory,
         ILogger<TelegramMediaService> logger)
     {
         _webPanelSettings = webPanelSettings;
+        _httpClientFactory = httpClientFactory;
         _logger = logger;
     }
 
@@ -231,13 +236,25 @@ public sealed class TelegramMediaService : ITelegramMediaService
         return null;
     }
 
-    private static async Task<InputFile> DownloadPhotoAsInputFileAsync(string fullUrl, CancellationToken cancellationToken)
+    private async Task<InputFile> DownloadPhotoAsInputFileAsync(string fullUrl, CancellationToken cancellationToken)
     {
         var stopwatch = Stopwatch.StartNew();
-        using var httpClient = new HttpClient();
-        using var photoStream = await httpClient.GetStreamAsync(fullUrl, cancellationToken);
+        var httpClient = _httpClientFactory.CreateClient("telegram-media");
+        using var response = await httpClient.GetAsync(
+            fullUrl,
+            HttpCompletionOption.ResponseHeadersRead,
+            cancellationToken);
+
+        response.EnsureSuccessStatusCode();
+
+        if (response.Content.Headers.ContentLength is > MaxHttpPhotoBytes)
+        {
+            throw new InvalidOperationException("HTTP photo is larger than the configured limit.");
+        }
+
+        using var photoStream = await response.Content.ReadAsStreamAsync(cancellationToken);
         var memoryStream = new MemoryStream();
-        await photoStream.CopyToAsync(memoryStream, cancellationToken);
+        await CopyToLimitedMemoryStreamAsync(photoStream, memoryStream, MaxHttpPhotoBytes, cancellationToken);
         memoryStream.Position = 0;
 
         var fileName = Path.GetFileName(new Uri(fullUrl).AbsolutePath);
@@ -248,5 +265,32 @@ public sealed class TelegramMediaService : ITelegramMediaService
 
         stopwatch.Stop();
         return InputFile.FromStream(memoryStream, fileName);
+    }
+
+    private static async Task CopyToLimitedMemoryStreamAsync(
+        Stream source,
+        MemoryStream destination,
+        long maxBytes,
+        CancellationToken cancellationToken)
+    {
+        var buffer = new byte[81920];
+        long totalBytes = 0;
+
+        while (true)
+        {
+            var bytesRead = await source.ReadAsync(buffer, cancellationToken);
+            if (bytesRead == 0)
+            {
+                return;
+            }
+
+            totalBytes += bytesRead;
+            if (totalBytes > maxBytes)
+            {
+                throw new InvalidOperationException("HTTP photo is larger than the configured limit.");
+            }
+
+            await destination.WriteAsync(buffer.AsMemory(0, bytesRead), cancellationToken);
+        }
     }
 }

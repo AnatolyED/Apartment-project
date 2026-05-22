@@ -1,8 +1,6 @@
 import { access, mkdir } from 'fs/promises';
 import { constants } from 'fs';
 import path from 'path';
-import { sql } from 'drizzle-orm';
-import { db } from '@/lib/db';
 
 export interface DependencyStatus {
   status: 'ok' | 'error';
@@ -20,7 +18,25 @@ export interface WebPanelHealthStatus {
 
 async function checkDatabase(): Promise<DependencyStatus> {
   try {
-    await db.execute(sql`select 1`);
+    const [{ sql }, { db }] = await Promise.all([
+      import('drizzle-orm'),
+      import('@/lib/db'),
+    ]);
+
+    await db.execute(sql`
+      do $$
+      begin
+        if (
+          select count(*)
+          from information_schema.tables
+          where table_schema = 'public'
+            and table_name in ('cities', 'districts', 'apartments', 'users')
+        ) < 4 then
+          raise exception 'required application tables are missing';
+        end if;
+      end
+      $$;
+    `);
     return { status: 'ok', message: 'Подключение к PostgreSQL активно' };
   } catch (error) {
     console.error('Web-panel database health error:', error);
@@ -57,8 +73,10 @@ export async function getBotDiagnosticsSummary() {
   const baseUrl = process.env.BOT_DIAGNOSTICS_URL?.trim() || 'http://apartment-bot:8080';
 
   try {
+    const diagnosticsToken = process.env.DIAGNOSTICS_TOKEN?.trim();
     const response = await fetch(`${baseUrl}/diagnostics/summary`, {
       cache: 'no-store',
+      headers: diagnosticsToken ? { 'X-Diagnostics-Token': diagnosticsToken } : undefined,
       signal: AbortSignal.timeout(4000),
     });
 
@@ -77,10 +95,29 @@ export async function getBotDiagnosticsSummary() {
       payload,
     };
   } catch (error) {
-    console.error('Bot diagnostics fetch error:', error);
     return {
       status: 'error' as const,
-      message: 'Не удалось получить диагностику бота',
+      message: getBotDiagnosticsErrorMessage(error),
     };
   }
+}
+
+function getBotDiagnosticsErrorMessage(error: unknown) {
+  if (isAbortOrTimeoutError(error)) {
+    return 'Бот не ответил на диагностику за 4 секунды';
+  }
+
+  if (error instanceof TypeError) {
+    return 'Бот недоступен по адресу диагностики';
+  }
+
+  return 'Не удалось получить диагностику бота';
+}
+
+function isAbortOrTimeoutError(error: unknown) {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  return error.name === 'AbortError' || error.name === 'TimeoutError';
 }

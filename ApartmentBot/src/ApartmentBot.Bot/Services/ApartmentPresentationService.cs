@@ -49,10 +49,21 @@ public interface IApartmentPresentationService
         long userId,
         ApartmentDto apartment,
         CancellationToken cancellationToken);
+
+    Task SwitchApartmentPhotoAsync(
+        ITelegramBotClient botClient,
+        long userId,
+        ApartmentDto apartment,
+        int messageId,
+        string photoView,
+        CancellationToken cancellationToken);
 }
 
 public sealed class ApartmentPresentationService : IApartmentPresentationService
 {
+    private const string LayoutPhotoView = ApartmentPhotoCallbackData.Layout;
+    private const string LocationPhotoView = ApartmentPhotoCallbackData.Location;
+
     private readonly IApartmentService _apartmentService;
     private readonly IDistrictService _districtService;
     private readonly IUserStateService _userStateService;
@@ -116,12 +127,14 @@ public sealed class ApartmentPresentationService : IApartmentPresentationService
         }
 
         var currentFilters = state.GetCurrentFilters();
+        const int apartmentsPerPage = 5;
+
         var apartments = await _apartmentService.GetApartmentsAsync(
             districtId: isCitySearch ? null : state.SelectedDistrictId,
             cityId: isCitySearch ? state.SelectedCityId : null,
             filters: currentFilters.HasActiveFilters ? currentFilters : null,
             page: state.CurrentPage,
-            limit: 20,
+            limit: apartmentsPerPage,
             cancellationToken: cancellationToken);
 
         var navigationKeyboard = KeyboardFactory.CreateApartmentListNavigationKeyboard(
@@ -285,8 +298,10 @@ public sealed class ApartmentPresentationService : IApartmentPresentationService
         var message = _apartmentMessageFormatter.FormatApartmentMessage(apartment, districtName);
         var replyMarkup = KeyboardFactory.CreateApartmentDetailsKeyboard(
             _telegramSettings.Value.ManagerChatId,
-            apartment.Photos.Count > 1);
-        var photoUrl = apartment.Photos.FirstOrDefault();
+            HasGalleryPhotos(apartment),
+            HasLocationPhoto(apartment),
+            LayoutPhotoView);
+        var photoUrl = GetApartmentPhotoUrl(apartment, LayoutPhotoView);
 
         if (!string.IsNullOrEmpty(photoUrl))
         {
@@ -347,7 +362,7 @@ public sealed class ApartmentPresentationService : IApartmentPresentationService
         ApartmentDto apartment,
         CancellationToken cancellationToken)
     {
-        var galleryPhotos = apartment.Photos.Skip(1).Take(9).ToList();
+        var galleryPhotos = apartment.Photos.Skip(HasLocationPhoto(apartment) ? 2 : 1).Take(8).ToList();
         if (galleryPhotos.Count == 0)
         {
             await _telegramRetryService.ExecuteAsync(
@@ -370,6 +385,119 @@ public sealed class ApartmentPresentationService : IApartmentPresentationService
             "SendMediaGroup:ApartmentGallery",
             ct => botClient.SendMediaGroup(userId, media, cancellationToken: ct),
             cancellationToken);
+    }
+
+    public async Task SwitchApartmentPhotoAsync(
+        ITelegramBotClient botClient,
+        long userId,
+        ApartmentDto apartment,
+        int messageId,
+        string photoView,
+        CancellationToken cancellationToken)
+    {
+        var normalizedPhotoView = ApartmentPhotoCallbackData.IsKnownView(photoView)
+            ? photoView
+            : LayoutPhotoView;
+        var photoUrl = GetApartmentPhotoUrl(apartment, normalizedPhotoView);
+        var state = await _userStateService.GetStateAsync(userId, cancellationToken);
+        var districtName = state.SearchMode == ApartmentSearchMode.ByCity
+            ? (await _districtService.GetDistrictByIdAsync(apartment.DistrictId, cancellationToken))?.Name
+            : null;
+        var message = _apartmentMessageFormatter.FormatApartmentMessage(apartment, districtName);
+        var replyMarkup = KeyboardFactory.CreateApartmentDetailsKeyboard(
+            _telegramSettings.Value.ManagerChatId,
+            HasGalleryPhotos(apartment),
+            HasLocationPhoto(apartment),
+            normalizedPhotoView);
+
+        if (string.IsNullOrEmpty(photoUrl))
+        {
+            await SendOrEditTextMessageAsync(
+                botClient,
+                userId,
+                messageId,
+                "Фото для этого режима пока нет.\n\n" + message,
+                replyMarkup,
+                cancellationToken);
+            return;
+        }
+
+        if (state.ApartmentPhotoShownForApartmentId == apartment.Id &&
+            string.Equals(state.ApartmentPhotoShownForPhotoUrl, photoUrl, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        var fullUrl = _telegramMediaService.BuildWebPanelFileUrl(photoUrl);
+
+        try
+        {
+            await EditPhotoMediaWithMetricsAsync(
+                botClient,
+                userId,
+                messageId,
+                photoUrl,
+                fullUrl,
+                message,
+                replyMarkup,
+                normalizedPhotoView,
+                cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Не удалось переключить фото квартиры через editMessageMedia, отправляем новую карточку.");
+
+            if (messageId != 0)
+            {
+                try
+                {
+                    await _telegramRetryService.ExecuteAsync(
+                        "DeleteMessage:ApartmentPhotoSwitchSource",
+                        ct => botClient.DeleteMessage(userId, messageId, ct),
+                        cancellationToken);
+                }
+                catch
+                {
+                }
+            }
+
+            await SendPhotoWithMetricsAsync(
+                botClient,
+                userId,
+                photoUrl,
+                fullUrl,
+                message,
+                replyMarkup,
+                "apartment-photo-switch",
+                cancellationToken);
+        }
+
+        state.ApartmentPhotoShownForApartmentId = apartment.Id;
+        state.ApartmentPhotoShownForPhotoUrl = photoUrl;
+        state.SelectedApartmentSummary = message;
+        await _userStateService.SetStateAsync(userId, state, cancellationToken);
+    }
+
+    private static bool HasLocationPhoto(ApartmentDto apartment) =>
+        apartment.Photos.Count > 1 && IsLocationPhoto(apartment.Photos[1]);
+
+    private static bool HasGalleryPhotos(ApartmentDto apartment) =>
+        apartment.Photos.Count > (HasLocationPhoto(apartment) ? 2 : 1);
+
+    private static string? GetApartmentPhotoUrl(ApartmentDto apartment, string photoView)
+    {
+        if (string.Equals(photoView, LocationPhotoView, StringComparison.Ordinal) && HasLocationPhoto(apartment))
+        {
+            return apartment.Photos[1];
+        }
+
+        return apartment.Photos.FirstOrDefault();
+    }
+
+    private static bool IsLocationPhoto(string photoUrl)
+    {
+        var fileName = photoUrl.Replace('\\', '/').Split('/').LastOrDefault() ?? string.Empty;
+        return fileName.StartsWith("location-", StringComparison.OrdinalIgnoreCase);
     }
 
     private async Task SendPhotoWithMetricsAsync(
@@ -402,6 +530,44 @@ public sealed class ApartmentPresentationService : IApartmentPresentationService
             "Отправка фото для {EntityType} в Telegram заняла {ElapsedMs} мс",
             entityType,
             sendStopwatch.ElapsedMilliseconds);
+    }
+
+    private async Task EditPhotoMediaWithMetricsAsync(
+        ITelegramBotClient botClient,
+        long userId,
+        int messageId,
+        string relativePhotoUrl,
+        string fullPhotoUrl,
+        string caption,
+        InlineKeyboardMarkup replyMarkup,
+        string entityType,
+        CancellationToken cancellationToken)
+    {
+        var loadStopwatch = Stopwatch.StartNew();
+        var inputFile = await _telegramMediaService.LoadPhotoAsInputFileAsync(relativePhotoUrl, fullPhotoUrl, cancellationToken);
+        loadStopwatch.Stop();
+
+        _logger.LogInformation(
+            "Подготовка фото для переключения {EntityType} завершена за {ElapsedMs} мс",
+            entityType,
+            loadStopwatch.ElapsedMilliseconds);
+
+        var media = new InputMediaPhoto(inputFile)
+        {
+            Caption = caption
+        };
+
+        var editStopwatch = Stopwatch.StartNew();
+        await _telegramRetryService.ExecuteAsync(
+            $"EditMessageMedia:{entityType}",
+            ct => botClient.EditMessageMedia(userId, messageId, media, replyMarkup: replyMarkup, cancellationToken: ct),
+            cancellationToken);
+        editStopwatch.Stop();
+
+        _logger.LogInformation(
+            "Переключение фото {EntityType} в Telegram заняло {ElapsedMs} мс",
+            entityType,
+            editStopwatch.ElapsedMilliseconds);
     }
 
     private async Task SendOrEditTextMessageAsync(
