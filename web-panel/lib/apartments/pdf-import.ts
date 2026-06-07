@@ -684,6 +684,12 @@ interface PdfJpegImage {
   ratio: number;
 }
 
+const LOCATION_IMAGE_MIN_WIDTH = 500;
+const LOCATION_IMAGE_MIN_HEIGHT = 300;
+const LOCATION_IMAGE_MIN_RATIO = 1.3;
+const LOCATION_IMAGE_MAX_RATIO = 2.1;
+const LOCATION_IMAGE_MIN_SCORE = 180;
+
 function extractFirstJpegImageFromPage(
   pdfDoc: PDFDocument,
   pageNumber: number
@@ -701,13 +707,13 @@ function extractLocationImageForApartmentPage(
     return null;
   }
 
-  const largeImages = images.filter((image) => image.width >= 400 && image.height >= 250);
-  const candidates = largeImages.length > 0 ? largeImages : images;
+  const candidates = images.filter(isPotentialLocationImage);
   return candidates
     .map((image) => ({
       image,
       score: scoreLocationImageCandidate(image),
     }))
+    .filter((candidate) => candidate.score >= LOCATION_IMAGE_MIN_SCORE)
     .sort((left, right) => right.score - left.score)[0]?.image.buffer ?? null;
 }
 
@@ -761,15 +767,25 @@ function listJpegImagesFromPage(
   return images;
 }
 
+function isPotentialLocationImage(image: PdfJpegImage) {
+  return (
+    image.width >= LOCATION_IMAGE_MIN_WIDTH &&
+    image.height >= LOCATION_IMAGE_MIN_HEIGHT &&
+    image.ratio >= LOCATION_IMAGE_MIN_RATIO &&
+    image.ratio <= LOCATION_IMAGE_MAX_RATIO
+  );
+}
+
 function scoreLocationImageCandidate(image: PdfJpegImage) {
   const targetMapRatio = 1.68;
   const ratioDistance = Math.abs(image.ratio - targetMapRatio);
-  const ratioScore = Math.max(0, 50 - ratioDistance * 60);
-  const sizeScore = Math.min(image.area / 300_000, 1) * 20;
-  const isLandscapeMap = image.ratio >= 1.35 && image.ratio <= 2.1 ? 100 : 0;
-  const isLargeEnough = image.width >= 500 && image.height >= 300 ? 100 : 0;
+  const ratioScore = Math.max(0, 100 - ratioDistance * 180);
+  const sizeScore = Math.min(image.area / 300_000, 1) * 50;
+  const knownMapSizeScore =
+    image.width >= 560 && image.width <= 900 && image.height >= 320 && image.height <= 520 ? 140 : 0;
+  const oversizedPhotoPenalty = image.area > 1_000_000 ? 120 : 0;
 
-  return isLargeEnough + isLandscapeMap + ratioScore + sizeScore;
+  return knownMapSizeScore + ratioScore + sizeScore - oversizedPhotoPenalty;
 }
 
 function hasDctFilter(filter: unknown) {

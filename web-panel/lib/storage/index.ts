@@ -33,8 +33,8 @@ export type EntityType = 'districts' | 'apartments';
 
 // Максимальный размер файла в байтах (5 MB)
 const MAX_FILE_SIZE = 5 * 1024 * 1024;
-const TELEGRAM_MAX_DIMENSION = 1280;
-const TELEGRAM_JPEG_QUALITY = 75;
+const TELEGRAM_MAX_DIMENSION = 2048;
+const TELEGRAM_JPEG_QUALITY = 92;
 
 // Разрешённые MIME-типы изображений
 const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
@@ -207,7 +207,7 @@ async function saveTelegramReadyVariant(
         fit: 'inside',
         withoutEnlargement: true,
       })
-      .jpeg({ quality: TELEGRAM_JPEG_QUALITY })
+      .jpeg({ quality: TELEGRAM_JPEG_QUALITY, mozjpeg: true })
       .toBuffer();
 
     await writeFile(telegramReadyFullPath, telegramBuffer);

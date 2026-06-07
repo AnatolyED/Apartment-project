@@ -17,7 +17,9 @@ public interface ITelegramMediaService
 
 public sealed class TelegramMediaService : ITelegramMediaService
 {
-    private const long MaxHttpPhotoBytes = 5 * 1024 * 1024;
+    private const long MaxTelegramPhotoBytes = 10 * 1024 * 1024;
+    private const int TelegramMaxDimension = 2048;
+    private const int TelegramJpegQuality = 92;
 
     private readonly IOptions<WebPanelSettings> _webPanelSettings;
     private readonly IHttpClientFactory _httpClientFactory;
@@ -47,12 +49,9 @@ public sealed class TelegramMediaService : ITelegramMediaService
     public async Task<InputFile> LoadPhotoAsInputFileAsync(string relativePath, string fullUrl, CancellationToken cancellationToken)
     {
         var totalStopwatch = Stopwatch.StartNew();
-        var preferredRelativePath = GetTelegramReadyRelativePath(relativePath) ?? relativePath;
-        var preferredFullUrl = preferredRelativePath == relativePath
-            ? fullUrl
-            : BuildWebPanelFileUrl(preferredRelativePath);
+        var telegramReadyRelativePath = GetTelegramReadyRelativePath(relativePath);
 
-        var localPath = TryResolveLocalPhotoPath(preferredRelativePath);
+        var localPath = TryResolveLocalPhotoPath(relativePath);
         if (!string.IsNullOrEmpty(localPath))
         {
             _logger.LogInformation("Загрузка фото с диска: {Path}", localPath);
@@ -64,38 +63,38 @@ public sealed class TelegramMediaService : ITelegramMediaService
             return inputFile;
         }
 
-        var originalLocalPath = preferredRelativePath == relativePath
+        var telegramReadyLocalPath = telegramReadyRelativePath is null
             ? null
-            : TryResolveLocalPhotoPath(relativePath);
+            : TryResolveLocalPhotoPath(telegramReadyRelativePath);
 
-        if (!string.IsNullOrEmpty(originalLocalPath))
+        if (!string.IsNullOrEmpty(telegramReadyLocalPath))
         {
-            _logger.LogInformation("Telegram-ready версия не найдена. Используем исходное фото с диска: {Path}", originalLocalPath);
-            var inputFile = CreateInputFileFromLocalPath(originalLocalPath);
+            _logger.LogInformation("Используем Telegram-ready фото с диска: {Path}", telegramReadyLocalPath);
+            var inputFile = CreateInputFileFromLocalPath(telegramReadyLocalPath);
             _logger.LogInformation(
-                "Медиа-пайплайн: исходное локальное фото подготовлено за {ElapsedMs} мс. Path={Path}",
+                "Медиа-пайплайн: локальное фото подготовлено за {ElapsedMs} мс. Path={Path}",
                 totalStopwatch.ElapsedMilliseconds,
-                originalLocalPath);
+                telegramReadyLocalPath);
             return inputFile;
         }
 
-        _logger.LogInformation("Локальное фото не найдено. Переходим к HTTP-загрузке: {Url}", preferredFullUrl);
-        var downloadedFile = await DownloadPhotoAsInputFileAsync(preferredFullUrl, cancellationToken);
+        _logger.LogInformation("Локальное фото не найдено. Переходим к HTTP-загрузке: {Url}", fullUrl);
+        var downloadedFile = await DownloadPhotoAsInputFileAsync(fullUrl, cancellationToken);
         _logger.LogInformation(
             "Медиа-пайплайн: HTTP-фото подготовлено за {ElapsedMs} мс. Url={Url}",
             totalStopwatch.ElapsedMilliseconds,
-            preferredFullUrl);
+            fullUrl);
         return downloadedFile;
     }
 
     private InputFile CreateInputFileFromLocalPath(string localPath)
     {
-        if (localPath.EndsWith("-telegram.jpg", StringComparison.OrdinalIgnoreCase))
+        if (CanSendOriginalPhoto(localPath))
         {
             var memoryStream = new MemoryStream(File.ReadAllBytes(localPath));
             memoryStream.Position = 0;
 
-            _logger.LogInformation("Используем готовую Telegram-ready версию без дополнительной конвертации: {Path}", localPath);
+            _logger.LogInformation("Используем локальное фото без дополнительной конвертации: {Path}", localPath);
             return InputFile.FromStream(memoryStream, Path.GetFileName(localPath));
         }
 
@@ -107,11 +106,11 @@ public sealed class TelegramMediaService : ITelegramMediaService
             image.Mutate(static context => context.Resize(new ResizeOptions
             {
                 Mode = ResizeMode.Max,
-                Size = new Size(1280, 1280),
+                Size = new Size(TelegramMaxDimension, TelegramMaxDimension),
             }));
 
             var memoryStream = new MemoryStream();
-            image.Save(memoryStream, new JpegEncoder { Quality = 75 });
+            image.Save(memoryStream, new JpegEncoder { Quality = TelegramJpegQuality });
             memoryStream.Position = 0;
 
             var photoSizeKb = Math.Round(memoryStream.Length / 1024d, 1);
@@ -148,6 +147,16 @@ public sealed class TelegramMediaService : ITelegramMediaService
 
             return InputFile.FromStream(memoryStream, fileName);
         }
+    }
+
+    private static bool CanSendOriginalPhoto(string localPath)
+    {
+        var extension = Path.GetExtension(localPath);
+        return (
+            string.Equals(extension, ".jpg", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(extension, ".jpeg", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(extension, ".png", StringComparison.OrdinalIgnoreCase)
+        ) && new FileInfo(localPath).Length <= MaxTelegramPhotoBytes;
     }
 
     private static string? TryResolveLocalPhotoPath(string relativePath)
@@ -247,14 +256,14 @@ public sealed class TelegramMediaService : ITelegramMediaService
 
         response.EnsureSuccessStatusCode();
 
-        if (response.Content.Headers.ContentLength is > MaxHttpPhotoBytes)
+        if (response.Content.Headers.ContentLength is > MaxTelegramPhotoBytes)
         {
             throw new InvalidOperationException("HTTP photo is larger than the configured limit.");
         }
 
         using var photoStream = await response.Content.ReadAsStreamAsync(cancellationToken);
         var memoryStream = new MemoryStream();
-        await CopyToLimitedMemoryStreamAsync(photoStream, memoryStream, MaxHttpPhotoBytes, cancellationToken);
+        await CopyToLimitedMemoryStreamAsync(photoStream, memoryStream, MaxTelegramPhotoBytes, cancellationToken);
         memoryStream.Position = 0;
 
         var fileName = Path.GetFileName(new Uri(fullUrl).AbsolutePath);

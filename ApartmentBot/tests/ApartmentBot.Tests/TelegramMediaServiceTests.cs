@@ -54,8 +54,7 @@ public sealed class TelegramMediaServiceTests
             Assert.NotNull(inputFile);
             Assert.Equal("InputFileStream", inputFile.GetType().Name);
             var fileName = GetStringProperty(inputFile, "FileName");
-            Assert.StartsWith("photo.", fileName);
-            Assert.Contains(Path.GetExtension(fileName), new[] { ".jpg", ".png" });
+            Assert.Equal("photo.png", fileName);
         }
         finally
         {
